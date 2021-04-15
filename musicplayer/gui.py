@@ -600,17 +600,17 @@ class MediaWidget(QWidget):
     click = pyqtSignal(str)
     doubleClick = pyqtSignal()
 
-    def __init__(self, control, isType: str, target: str) -> None:
+    def __init__(self, control, isType: str, name: str) -> None:
         super().__init__()
         self.control = control
-        self.target = target
+        self.name = name
         types = {"artist": self.control.getArtist, "album": self.control.getAlbum,
                  "playlist": self.control.getPlaylist}
         self.click.connect(types[isType])
         self.doubleClick.connect(self.control.playPlaylist)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        self.click.emit(self.target)
+        self.click.emit(self.name)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         self.doubleClick.emit()
@@ -621,6 +621,7 @@ def clearLayout(layout):
     if layout.count():
         while (item := layout.takeAt(0)) is not None:
             layout.removeItem(item)
+            item.widget().hide()
             item.widget().deleteLater()
 
 
@@ -637,7 +638,10 @@ class MainBox(QWidget):
         self.setLayout(self.layout)
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.addWidget(self.buttons)
-        self._setButtons()
+        self.buttonLayout = QHBoxLayout()
+        self.labels = {"Artists": QPushButton(), "Albums": QPushButton(),
+                       "Playlists": QPushButton(), "Now Playing": QPushButton()}
+        self.setButtons()
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         self.layout.addWidget(line)
@@ -696,22 +700,24 @@ class MainBox(QWidget):
         self.nowPlayingSong = None
         self.garbageProtector = {}
 
+        self.pixmaps = {"artist": artistPixmap,
+                        "album": albumPixmap,
+                        "playlist": playlistPixmap}
+
         for scrollArea in [self.artistScrollArea, self.albumScrollArea,
                            self.playlistScrollArea, self.nowPlayingScrollArea]:
             scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
             scrollArea.setWidgetResizable(True)
             scrollArea.setFrameShape(QFrame.NoFrame)
 
-    def _setButtons(self) -> None:
+    def setButtons(self) -> None:
         """Creates buttons for switching between tabs."""
-        self.buttonLayout = QHBoxLayout()
         self.buttonLayout.setAlignment(Qt.AlignLeft | Qt.AlignTop)
         self.buttonLayout.setSpacing(20)
         self.buttons.setLayout(self.buttonLayout)
         self.buttons.setFixedHeight(45)
-        self.labels = {"Artists": None, "Albums": None, "Playlists": None, "Now Playing": None}
         for label in self.labels:
-            button = QPushButton()
+            button = self.labels[label]
             button.setText(label)
             font = QFont()
             font.setBold(True)
@@ -722,14 +728,13 @@ class MainBox(QWidget):
                                  "border-style: none;"
                                  "background-color:#141414;")
             button.setFixedHeight(25)
-            self.labels[label] = button
             self.buttonLayout.addWidget(button)
         self.labels["Artists"].clicked.connect(lambda x: self.showArea(0))
         self.labels["Albums"].clicked.connect(lambda x: self.showArea(1))
         self.labels["Playlists"].clicked.connect(lambda x: self.showArea(2))
         self.labels["Now Playing"].clicked.connect(lambda x: self.showArea(3))
 
-    def updateView(self, library) -> None:
+    def setAreas(self, library) -> None:
         """Called after the GUI has been shown, draws widgets for all
         artists/albums/playlists in the library."""
         self.setMainAreaArtists(library)
@@ -737,31 +742,57 @@ class MainBox(QWidget):
         self.setMainAreaPlaylists(library)
         self.setNowPlayingArea(library)
 
+    def updateView(self, library) -> None:
+        areas = {self.artistLayout: library.artists,
+                 self.albumLayout: library.albums,
+                 self.playlistLayout: library.playlists}
+        types = {self.artistLayout: "artist",
+                 self.albumLayout: "album",
+                 self.playlistLayout: "playlist"}
+        for area in areas:
+            fieldNames = []
+            toBeRemoved = []
+            for field in area.items:
+                fieldNames.append(field.widget().name)
+                if field.widget().name not in areas[area]:
+                    toBeRemoved.append(field)
+            if len(toBeRemoved):
+                for field in toBeRemoved:
+                    area.removeItem(field)
+                    field.widget().hide()
+                    field.widget().deleteLater()
+            for libraryItem in areas[area]:
+                if libraryItem not in fieldNames:
+                    self.addItemToLayout(area, types[area], libraryItem)
+                    fieldNames.append(libraryItem)
+
+    def addItemToLayout(self, layout, isType, name):
+        item = MediaWidget(self.control, isType, name)
+        item.setFixedSize(160, 195)
+        itemLayout = QVBoxLayout()
+        item.setLayout(itemLayout)
+        label = QLabel()
+        label.setFixedSize(150, 150)
+        label.setPixmap(QPixmap(self.pixmaps[isType]))
+        label.setScaledContents(True)
+        itemLayout.addWidget(label)
+        label = QLabel(name)
+        label.setFixedWidth(150)
+        label.setStyleSheet("color:#afafaf;"
+                            "font-size: 12px;"
+                            "font-weight: bold;")
+        label.setAlignment(Qt.AlignCenter)
+        label.setWordWrap(True)
+        itemLayout.addWidget(label)
+        layout.addWidget(item)
+
     def setMainAreaArtists(self, library) -> None:
         clearLayout(self.artistLayout)
         self.artistScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.artistScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         if library is not None:
             for artist in library.artists:
-                field = MediaWidget(self.control, "artist", artist)
-                field.setFixedSize(160, 195)
-                field.setStyleSheet("border-style: none;")
-                fieldLayout = QVBoxLayout()
-                field.setLayout(fieldLayout)
-                label = QLabel()
-                label.setFixedSize(150, 150)
-                label.setPixmap(QPixmap(artistPixmap))
-                label.setScaledContents(True)
-                fieldLayout.addWidget(label)
-                artistName = QLabel(artist)
-                artistName.setFixedWidth(150)
-                artistName.setStyleSheet("color:#afafaf;"
-                                         "font-size: 12px;"
-                                         "font-weight: bold;")
-                artistName.setAlignment(Qt.AlignCenter)
-                artistName.setWordWrap(True)
-                fieldLayout.addWidget(artistName)
-                self.artistLayout.addWidget(field)
+                self.addItemToLayout(self.artistLayout, "artist", artist)
 
     def setMainAreaAlbums(self, library) -> None:
         clearLayout(self.albumLayout)
@@ -769,25 +800,7 @@ class MainBox(QWidget):
         self.albumScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         if library is not None:
             for album in library.albums:
-                field = MediaWidget(self.control, "album", album)
-                field.setFixedSize(160, 195)
-                field.setStyleSheet("border-style: none;")
-                fieldLayout = QVBoxLayout()
-                field.setLayout(fieldLayout)
-                label = QLabel()
-                label.setFixedSize(150, 150)
-                label.setPixmap(QPixmap(albumPixmap))
-                label.setScaledContents(True)
-                fieldLayout.addWidget(label)
-                albumName = QLabel(album)
-                albumName.setFixedWidth(150)
-                albumName.setStyleSheet("color:#afafaf;"
-                                        "font-size: 10px;"
-                                        "font-weight: bold;")
-                albumName.setAlignment(Qt.AlignCenter)
-                albumName.setWordWrap(True)
-                fieldLayout.addWidget(albumName)
-                self.albumLayout.addWidget(field)
+                self.addItemToLayout(self.albumLayout, "album", album)
 
     def setMainAreaPlaylists(self, library) -> None:
         clearLayout(self.playlistLayout)
@@ -795,25 +808,7 @@ class MainBox(QWidget):
         self.playlistScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         if library is not None:
             for playlist in library.playlists:
-                field = MediaWidget(self.control, "playlist", playlist)
-                field.setFixedSize(160, 195)
-                field.setStyleSheet("border-style: none;")
-                fieldLayout = QVBoxLayout()
-                field.setLayout(fieldLayout)
-                label = QLabel()
-                label.setFixedSize(150, 150)
-                label.setPixmap(QPixmap(playlistPixmap))
-                label.setScaledContents(True)
-                fieldLayout.addWidget(label)
-                playlistName = QLabel(playlist)
-                playlistName.setFixedWidth(150)
-                playlistName.setStyleSheet("color:#afafaf;"
-                                           "font-size: 10px;"
-                                           "font-weight: bold;")
-                playlistName.setAlignment(Qt.AlignCenter)
-                playlistName.setWordWrap(True)
-                fieldLayout.addWidget(playlistName)
-                self.playlistLayout.addWidget(field)
+                self.addItemToLayout(self.playlistLayout, "playlist", playlist)
 
     def setNowPlayingArea(self, library, clearOnly: bool = False) -> None:
         clearLayout(self.nowPlayingLayout)
