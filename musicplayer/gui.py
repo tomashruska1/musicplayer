@@ -766,7 +766,7 @@ class MainBox(QWidget):
                     self.addItemToLayout(area, types[area], libraryItem)
                     fieldNames.append(libraryItem)
 
-    def addItemToLayout(self, layout, isType, name):
+    def addItemToLayout(self, layout: QLayout, isType: str, name: str) -> None:
         item = MediaWidget(self.control, isType, name)
         item.setFixedSize(160, 195)
         itemLayout = QVBoxLayout()
