@@ -66,7 +66,6 @@ class Control:
         when the Library class is initialized."""
         # TODO add a tooltip that will notify the user larger amount of songs is being loaded
         #  (freezes the program as the execution moves to the Library class.)
-        #  Also try threading to prevent the block.
         self.library = library.Library()
         self.mainBox.setAreas(self.library)
         self.setUpTimer.deleteLater()
