@@ -43,6 +43,7 @@ class Library:
         self.tempFiles.clear()
         if self.changed:
             self._save()
+            self.changed = False
 
     def _load(self) -> bool:
         """Loads data form a binary gzip file on program startup.
@@ -143,10 +144,12 @@ class Library:
                                         value = f"{match2.group(0):0>2}"
                                     else:
                                         value = match.group(0)
-                        if key == "date":
+                        elif key == "date":
                             if not re.fullmatch(r"\d{4}", value):
                                 if match := re.match(r"\d{4}", value):
                                     value = match.group(0)
+                        elif key == "title" and value == "Unknown":
+                            value = dirEntry.name
                         value_list.append(value)
                     length = round(MP3(dirEntry.path).info.length)
                     length = f"{length // 60 :02}:{length % 60 :02}"
@@ -208,16 +211,21 @@ class Library:
         """Returns a list of all song paths for a given artist with optional sorting new first."""
         songs = []
         for song in self._files:
-            if self._files[song][self.ARTIST].lower() == artist.lower():
-                songs.append(song)
+            if os.path.exists(song):
+                if self._files[song][self.ARTIST].lower() == artist.lower():
+                    songs.append(song)
         songs.sort(key=lambda x: (self._files[x][self.ALBUM], self._files[x][self.DISC],
                                   self._files[x][self.TRACK]))
         songs.sort(key=lambda x: self._files[x][self.YEAR], reverse=newFirst)
         return songs
 
     def getSongsForAlbum(self, album: str) -> list:
-        return [song for song in self._files
-                if self._files[song][self.ALBUM].lower() == album.lower()]
+        songs = []
+        for song in self._files:
+            if os.path.exists(song):
+                if self._files[song][self.ALBUM].lower() == album.lower():
+                    songs.append(song)
+        return songs
 
     def getSongsForPlaylist(self, playlist: str) -> list:
         # TODO
