@@ -1,3 +1,5 @@
+from time import time_ns
+
 from PyQt5.QtCore import QUrl, QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QAudio, QMediaContent
 from musicplayer import gui, library
@@ -50,10 +52,15 @@ class Control:
         self.setUpTimer = QTimer()
         self.setUpTimer.setInterval(20)
         self.setUpTimer.setSingleShot(True)
-        self.setUpTimer.timeout.connect(self.updateView)
+        self.setUpTimer.timeout.connect(self.setAreas)
         self.setUpTimer.start()
 
-    def updateView(self) -> None:
+        self.updateTimer = QTimer()
+        self.updateTimer.setInterval(15_000)
+        self.updateTimer.timeout.connect(self.updateLibrary)
+        self.updateTimer.start()
+
+    def setAreas(self) -> None:
         """Called after the GUI is created to provide user with a feedback
         that the program is running in case a larger amount of songs will be added
         when the Library class is initialized."""
@@ -61,9 +68,13 @@ class Control:
         #  (freezes the program as the execution moves to the Library class.)
         #  Also try threading to prevent the block.
         self.library = library.Library()
-        self.mainBox.updateView(self.library)
+        self.mainBox.setAreas(self.library)
         self.setUpTimer.deleteLater()
         self.setUpTimer = None
+
+    def updateLibrary(self) -> None:
+        self.library.update()
+        self.mainBox.updateView(self.library)
 
     def updateCurrentSong(self) -> None:
         """Update all areas that may display information about the currently
