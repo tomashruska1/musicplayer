@@ -597,23 +597,55 @@ class MediaWidget(QWidget):
     Click displays songs for the particular artist, album, or playlist,
     double click puts these to the playlist and starts playback."""
 
-    click = pyqtSignal(str)
+    click = pyqtSignal(str, str)
     doubleClick = pyqtSignal()
 
     def __init__(self, control, isType: str, name: str) -> None:
         super().__init__()
         self.control = control
         self.name = name
-        types = {"artist": self.control.getArtist, "album": self.control.getAlbum,
-                 "playlist": self.control.getPlaylist}
-        self.click.connect(types[isType])
-        self.doubleClick.connect(self.control.playPlaylist)
+        self.click.connect(self.control.getSongs)
+        self.type = isType
+        self.doubleClick.connect(self.control.playSongList)
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        self.click.emit(self.name)
+        if event.button() == Qt.LeftButton:
+            self.click.emit(self.type, self.name)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        self.doubleClick.emit()
+        if event.button() == Qt.LeftButton:
+            self.doubleClick.emit()
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        menu = QMenu()
+        menu.setStyleSheet("QMenu {"
+                           "    background-color: #202020;"
+                           "    color: #afafaf;"
+                           "    margin: 0px;"
+                           "}"
+                           "QMenu::item:selected {"
+                           "    background: #404040;"
+                           "}"
+                           "QMenu::separator {"
+                           "    height: 1px;"
+                           "    background: #303030;"
+                           "}")
+        menu.addAction("Play", self.play)
+        menu.addAction("Add to now playing", self.addToPlaylist)
+        menu.addAction("Play after current song", self.addAfterCurrent)
+        if self.type != "playlist":
+            menu.addAction("Add to playlist")
+        menu.move(event.globalX(), event.globalY())
+        menu.exec()
+
+    def play(self) -> None:
+        self.control.playMediaWidget(self.type, self.name, True)
+
+    def addToPlaylist(self) -> None:
+        self.control.playMediaWidget(self.type, self.name, False)
+
+    def addAfterCurrent(self) -> None:
+        self.control.playMediaWidget(self.type, self.name, False, True)
 
 
 def clearLayout(layout):
@@ -813,6 +845,7 @@ class MainBox(QWidget):
     def setNowPlayingArea(self, library, clearOnly: bool = False) -> None:
         clearLayout(self.nowPlayingLayout)
         self.garbageProtector = {}
+        self.nowPlayingSong = None
         self.nowPlayingScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.nowPlayingScrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         if library is not None:
@@ -889,7 +922,7 @@ class SongWidget(QWidget):
         if isNowPlaying:
             self.doubleClick.connect(self.control.playFromNowPlaying)
         else:
-            self.doubleClick.connect(self.control.playPlaylist)
+            self.doubleClick.connect(self.control.playSongList)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         self.doubleClick.emit(self.song)
