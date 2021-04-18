@@ -97,26 +97,17 @@ class Control:
         if index == -1:
             self.stopButtonClick()
 
-    def getArtist(self, artist: str) -> None:
-        """Retrieves the songs for a given artist and passes the resulting list
-        to the SongList class."""
-        self.songList.updateSongList(self.library.getSongsForArtist(artist),
+    def getSongs(self, isType: str, target: str) -> None:
+        """Retrieves the songs for a given artist, album or playlist based on type
+        and passes the resulting list to the SongList class."""
+        types = {"artist": self.library.getSongsForArtist,
+                 "album": self.library.getSongsForAlbum,
+                 "playlist": self.library.getSongsForPlaylist}
+        self.songList.updateSongList(types[isType](target),
                                      self.library.library,
                                      self.currentSong)
 
-    def getAlbum(self, album: str) -> None:
-        """Same functionality for albums."""
-        self.songList.updateSongList(self.library.getSongsForAlbum(album),
-                                     self.library.library,
-                                     self.currentSong)
-
-    def getPlaylist(self, playlist: str) -> None:
-        """Same functionality for playlists."""
-        self.songList.updateSongList(self.library.getSongsForPlaylist(playlist),
-                                     self.library.library,
-                                     self.currentSong)
-
-    def playPlaylist(self, song: str = None) -> None:
+    def playSongList(self, song: str = None) -> None:
         """Called when user double-clicks on an artist/album/playlist widget or a song
         in right-hand side panel."""
         self.playlist.clear()
@@ -127,12 +118,34 @@ class Control:
                 index = loopIndex
             self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(songPath)))
             loopIndex += 1
-        self.player.setPlaylist(self.playlist)
         self.player.play()
         if index > 0:
             self.playlist.setCurrentIndex(index)
         self.playing = True
         self.bottomBox.playButton.updatePictures(gui.pausePixmap, gui.pauseHoverPixmap, False)
+        self.mainBox.setNowPlayingArea(self.library)
+        self.mainBox.updateActiveSong(self.currentSong)
+
+    def playMediaWidget(self, isType: str, target: str, startOver: bool, afterCurrent: bool = False) -> None:
+        """Called from MediaWidget - plays all songs for MediaWidget's type and name."""
+        types = {"artist": self.library.getSongsForArtist,
+                 "album": self.library.getSongsForAlbum,
+                 "playlist": self.library.getSongsForPlaylist}
+        if startOver:
+            self.playlist.clear()
+        if afterCurrent:
+            index = self.playlist.currentIndex() + 1
+            for songPath in types[isType](target):
+                self.playlist.insertMedia(index, QMediaContent(QUrl.fromLocalFile(songPath)))
+                index += 1
+        else:
+            for songPath in types[isType](target):
+                self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(songPath)))
+        if startOver:
+            self.player.play()
+            self.playing = True
+            self.bottomBox.playButton.updatePictures(gui.pausePixmap, gui.pauseHoverPixmap, False)
+            self.mainBox.updateActiveSong(self.currentSong)
         self.mainBox.setNowPlayingArea(self.library)
         self.mainBox.updateActiveSong(self.currentSong)
 
@@ -236,7 +249,7 @@ class Control:
     def close(self):
         self.player.stop()
         # TODO
-        # for connection in self.connections:
-        #     disconnect
-        # save current state
+        #  for connection in self.connections:
+        #      disconnect
+        #  save current state
         self.mainWindow.close()
