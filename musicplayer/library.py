@@ -3,7 +3,6 @@ import gzip
 import os
 import re
 import struct
-from collections import defaultdict
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 
@@ -23,7 +22,7 @@ class Library:
         self._files = {}
         self.libraryFile = r"musicplayer\Library.lib"
         self.timestamp = datetime.datetime.min
-        self._playlists = defaultdict(list)
+        self._playlists = {}
         self.tempFiles = set()
         self.changed = False
         self._load()
@@ -53,42 +52,56 @@ class Library:
         try:
             with gzip.open(self.libraryFile, "rb") as fh:
                 if not fh.read(2) == self.MAGIC:
-                    print("file corrupted!")
                     return False
                 temp = {}
-                structRead = struct.Struct("<h")
-                folderCount = fh.read(structRead.size)
+                folderCount = fh.read(2)
                 folderCount = struct.unpack("<h", folderCount)[0]
                 timestamp = fh.read(14)
                 timestamp = struct.unpack("<14s", timestamp)[0].decode()
                 for n in range(folderCount):
-                    length = fh.read(structRead.size)
+                    length = fh.read(2)
                     length = struct.unpack("<h", length)[0]
                     folder = fh.read(struct.Struct(f"<{length}s").size)
                     folder = struct.unpack(f"<{length}s", folder)[0].decode("utf8")
                     self._folders.append(folder)
                 if not fh.read(2) == self.MAGIC:
-                    print("file corrupted...")
                     return False
                 while True:
-                    length = fh.read(structRead.size)
+                    length = fh.read(2)
                     if length == self.MAGIC:
-                        print("Done!")
                         break
                     length = struct.unpack("<h", length)[0]
                     path = fh.read(struct.Struct(f"<{length}s").size)
                     path = struct.unpack(f"<{length}s", path)[0].decode("utf8")
                     attributes = []
                     for n in range(7):
-                        length = fh.read(structRead.size)
+                        length = fh.read(2)
                         length = struct.unpack("<h", length)[0]
                         attrib = fh.read(struct.Struct(f"<{length}s").size)
                         attrib = struct.unpack(f"<{length}s", attrib)[0].decode("utf8")
                         attributes.append(attrib)
-                    temp.update({path: [*attributes]})
+                    temp[path] = attributes
                     if not fh.read(2) == self.MAGIC:
                         print("file corrupted...")
                         return False
+                length = fh.read(2)
+                length = struct.unpack("<h", length)[0]
+                if length > 0:
+                    for _ in range(length):
+                        length = fh.read(2)
+                        length = struct.unpack("<h", length)[0]
+                        playlist = fh.read(struct.Struct(f"<{length}s").size)
+                        playlist = struct.unpack(f"<{length}s", playlist)[0].decode("utf8")
+                        self._playlists[playlist] = []
+                        while True:
+                            length = fh.read(2)
+                            if length == self.MAGIC:
+                                break
+                            length = struct.unpack("<h", length)[0]
+                            song = fh.read(struct.Struct(f"<{length}s").size)
+                            song = struct.unpack(f"<{length}s", song)[0].decode("utf8")
+                            if os.path.exists(song):
+                                self._playlists[playlist].append(song)
             self._files = temp
             self.timestamp = datetime.datetime.strptime(timestamp, Library.format_spec)
             return True
@@ -104,7 +117,7 @@ class Library:
             fh.write(struct.pack("<h", len(self._folders)))
             fh.write(struct.pack("<14s", datetime.datetime.now().strftime(Library.format_spec).encode()))
             for folder in self._folders:
-                toBeWritten = struct.pack(f"<h{len(folder)}s", len(folder), folder.encode())
+                toBeWritten = struct.pack(f"<h{len(folder.encode())}s", len(folder.encode()), folder.encode())
                 fh.write(toBeWritten)
             fh.write(self.MAGIC)
             for song in self._files:
@@ -115,6 +128,14 @@ class Library:
                     fh.write(toBeWritten)
                 fh.write(self.MAGIC)
             fh.write(self.MAGIC)
+            fh.write(struct.pack("<h", len(self._playlists)))
+            for playlist in self._playlists:
+                toBeWritten = struct.pack(f"<h{len(playlist.encode())}s", len(playlist.encode()), playlist.encode())
+                fh.write(toBeWritten)
+                for song in self._playlists[playlist]:
+                    toBeWritten = struct.pack(f"<h{len(song.encode())}s", len(song.encode()), song.encode())
+                    fh.write(toBeWritten)
+                fh.write(self.MAGIC)
 
     def _getFiles(self, folder: [str, os.DirEntry]) -> None:
         """A recursive function that loops through files in a the given folder
@@ -193,14 +214,25 @@ class Library:
             self.update()
 
     def createPlaylist(self, newPlaylist: str) -> None:
-        self._playlists.update(newPlaylist)
+        self._playlists[newPlaylist] = []
+        self.changed = True
 
     def deletePlaylist(self, playlist: str) -> None:
         if playlist in self._playlists:
             del self._playlists[playlist]
+            self.changed = True
+
+    def renamePlaylist(self, playlist: str, newPlaylistName: str) -> None:
+        if playlist in self._playlists:
+            self._playlists[newPlaylistName] = self._playlists[playlist]
+            del self._playlists[playlist]
+            self.changed = True
 
     def addToPlaylist(self, playlist: str, song: str) -> None:
-        self.playlists[playlist].append(song)
+        if playlist not in self._playlists:
+            self._playlists[playlist] = []
+        self._playlists[playlist].append(song)
+        self.changed = True
 
     def deleteFromPlaylist(self, playlist: str, song: str) -> None:
         if playlist in self._playlists:
@@ -228,5 +260,4 @@ class Library:
         return songs
 
     def getSongsForPlaylist(self, playlist: str) -> list:
-        # TODO
-        return []
+        return self._playlists[playlist]
