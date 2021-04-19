@@ -45,7 +45,7 @@ class Control:
         self.bottomBox.volumeControl.setValue(self.volume)
 
         self.timer = QTimer()
-        self.timer.setInterval(200)
+        self.timer.setInterval(100)
         self.timer.timeout.connect(self.updateSongProgress)
         self.timer.start()
 
@@ -55,10 +55,10 @@ class Control:
         self.setUpTimer.timeout.connect(self.setAreas)
         self.setUpTimer.start()
 
-        self.updateTimer = QTimer()
-        self.updateTimer.setInterval(15_000)
-        self.updateTimer.timeout.connect(self.updateLibrary)
-        self.updateTimer.start()
+        self.libraryUpdateTimer = QTimer()
+        self.libraryUpdateTimer.setInterval(15_000)
+        self.libraryUpdateTimer.timeout.connect(self.updateLibrary)
+        self.libraryUpdateTimer.start()
 
     def setAreas(self) -> None:
         """Called after the GUI is created to provide user with a feedback
@@ -82,7 +82,7 @@ class Control:
         self.currentSong = media.request().url().toLocalFile().replace("/", "\\")
         if self.currentSong in self.library.library:
             self.songList.updateActiveSong(self.currentSong)
-            self.mainBox.updateActiveSong(self.currentSong)
+            self.mainBox.updateActiveSong(self.playlist.currentIndex())
             songEntry = self.library.library[self.currentSong]
             self.bottomBox.updateSongInfo(f"{songEntry[ARTIST]} - {songEntry[NAME]}")
 
@@ -124,9 +124,18 @@ class Control:
         self.playing = True
         self.bottomBox.playButton.updatePictures(gui.pausePixmap, gui.pauseHoverPixmap, False)
         self.mainBox.setNowPlayingArea(self.library)
-        self.mainBox.updateActiveSong(self.currentSong)
+        self.mainBox.updateActiveSong(self.playlist.currentIndex())
 
-    def playMediaWidget(self, isType: str, target: str, startOver: bool, afterCurrent: bool = False) -> None:
+    def playSongWidget(self, songPath: str, afterCurrent: bool = False) -> None:
+        if afterCurrent:
+            index = self.playlist.currentIndex() + 1
+            self.playlist.insertMedia(index, QMediaContent(QUrl.fromLocalFile(songPath)))
+        else:
+            self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(songPath)))
+        self.mainBox.setNowPlayingArea(self.library)
+        self.mainBox.updateActiveSong(self.playlist.currentIndex())
+
+    def playMediaWidget(self, isType: str, target: str, startOver: bool, afterCurrent: bool) -> None:
         """Called from MediaWidget - plays all songs for MediaWidget's type and name."""
         types = {"artist": self.library.getSongsForArtist,
                  "album": self.library.getSongsForAlbum,
@@ -145,9 +154,8 @@ class Control:
             self.player.play()
             self.playing = True
             self.bottomBox.playButton.updatePictures(gui.pausePixmap, gui.pauseHoverPixmap, False)
-            self.mainBox.updateActiveSong(self.currentSong)
         self.mainBox.setNowPlayingArea(self.library)
-        self.mainBox.updateActiveSong(self.currentSong)
+        self.mainBox.updateActiveSong(self.playlist.currentIndex())
 
     def playFromNowPlaying(self, song: str) -> None:
         """Called when user double-clicks on a song in the Now Playing tab."""
@@ -155,7 +163,35 @@ class Control:
             media = self.playlist.media(n)
             if song == media.request().url().toLocalFile().replace("/", "\\"):
                 self.playlist.setCurrentIndex(n)
+                if not self.playing:
+                    self.player.play()
+                    self.playing = True
                 return
+
+    def createPlaylist(self, playlistName: str) -> None:
+        self.library.createPlaylist(playlistName)
+        self.mainBox.setMainAreaPlaylists(self.library)
+
+    def addToExistingPlaylist(self, playlist: str, songOrWidget: str, isType: str) -> None:
+        types = {"artist": self.library.getSongsForArtist,
+                 "album": self.library.getSongsForAlbum,
+                 "playlist": self.library.getSongsForPlaylist}
+        if isType in types:
+            for song in types[isType](songOrWidget):
+                self.library.addToPlaylist(playlist, song)
+        else:
+            self.library.addToPlaylist(playlist, songOrWidget)
+        self.library.update()
+
+    def renamePlaylist(self, playlistName: str, newPlaylistName: str) -> None:
+        self.library.renamePlaylist(playlistName, newPlaylistName)
+        self.mainBox.setMainAreaPlaylists(self.library)
+        self.library.update()
+
+    def deletePlaylist(self, playlistName: str) -> None:
+        self.library.deletePlaylist(playlistName)
+        self.mainBox.setMainAreaPlaylists(self.library)
+        self.library.update()
 
     def addWatchedFolder(self, folder: str) -> None:
         """Adds a folder to the Library class. all mp3 files within the folder
@@ -173,7 +209,7 @@ class Control:
             self.player.stop()
             self.playlist.clear()
             self.bottomBox.updateSongInfo("")
-            self.songList.previousActive = None
+            self.songList.nowPlayingSong = None
             self.mainBox.nowPlayingSong = None
             self.playing = False
             self.bottomBox.updatePlayButton(self.playing, False)
@@ -186,7 +222,7 @@ class Control:
             self.playing = False
             self.player.pause()
         self.bottomBox.updatePlayButton(self.playing)
-        self.mainBox.updateActiveSong(self.currentSong)
+        self.mainBox.updateActiveSong(self.playlist.currentIndex())
         self.songList.updateActiveSong(self.currentSong)
 
     def repeatButtonClick(self) -> None:
@@ -213,8 +249,8 @@ class Control:
     def stopButtonClick(self) -> None:
         self.playing = False
         self.player.stop()
-        if self.songList.previousActive is not None:
-            self.songList.previousActive.clear()
+        if self.songList.nowPlayingSong is not None:
+            self.songList.nowPlayingSong.clear()
         if self.mainBox.nowPlayingSong is not None:
             self.mainBox.nowPlayingSong.clear()
         self.bottomBox.updatePlayButton(self.playing, False)
@@ -243,6 +279,8 @@ class Control:
         if 0 <= position < 2_000_000_000:
             if self.player.state() > 0:
                 self.bottomBox.updateSongProgress(position)
+                self.songList.activeSongPixmap()
+                self.mainBox.activeSongPixmap()
             else:
                 self.bottomBox.updateSongProgress(0)
 
