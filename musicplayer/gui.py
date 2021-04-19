@@ -8,7 +8,7 @@ from PyQt5.QtWidgets import (QFrame, QWidget, QApplication,
                              QSizeGrip, QSlider, QStackedWidget,
                              QScrollArea, QScrollBar, QLayout,
                              QSizePolicy, QFileDialog, QDialog,
-                             QGridLayout, QLayoutItem)
+                             QGridLayout, QLayoutItem, QInputDialog)
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
 
@@ -67,6 +67,19 @@ sliderStyle = ("QSlider::groove:horizontal {"
                "    background: #00a8f3;"
                "    border-radius: 4px;"
                "}")
+
+menuStyle = ("QMenu {"
+             "    background-color: #202020;"
+             "    color: #afafaf;"
+             "    margin: 0px;"
+             "}"
+             "QMenu::item:selected {"
+             "    background: #404040;"
+             "}"
+             "QMenu::separator {"
+             "    height: 1px;"
+             "    background: #303030;"
+             "}")
 
 if __name__ == '__main__':
     location = r"resources\\"
@@ -182,10 +195,6 @@ class MainWindow(QMainWindow):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self.right = self.left = self.up = self.down = False
-
-    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
-        # TODO add context menus
-        print("Hello")
 
 
 class MainWidget(QWidget):
@@ -333,19 +342,7 @@ class MenuLabel(QLabel):
         self.setPixmap(QPixmap(image))
         self.setScaledContents(True)
         self.menu = QMenu()
-        self.menu.setStyleSheet("QMenu {"
-                                "    background-color: #202020;"
-                                "    color: #afafaf;"
-                                "    margin: 0px;"
-                                "}"
-                                "QMenu::item:selected {"
-                                "    background: #404040;"
-                                "}"
-                                "QMenu::separator {"
-                                "    height: 1px;"
-                                "    background: #303030;"
-                                "}"
-                                )
+        self.menu.setStyleSheet(menuStyle)
         self.menu.addAction("Open file", self.openFile)
         self.menu.addAction("Manage watched folders", self.manageFolders)
         self.menu.addSeparator()
@@ -618,34 +615,57 @@ class MediaWidget(QWidget):
 
     def contextMenuEvent(self, event: QContextMenuEvent) -> None:
         menu = QMenu()
-        menu.setStyleSheet("QMenu {"
-                           "    background-color: #202020;"
-                           "    color: #afafaf;"
-                           "    margin: 0px;"
-                           "}"
-                           "QMenu::item:selected {"
-                           "    background: #404040;"
-                           "}"
-                           "QMenu::separator {"
-                           "    height: 1px;"
-                           "    background: #303030;"
-                           "}")
+        menu.setStyleSheet(menuStyle)
         menu.addAction("Play", self.play)
-        menu.addAction("Add to now playing", self.addToPlaylist)
-        menu.addAction("Play after current song", self.addAfterCurrent)
+        menu.addAction("Add to now playing", self.addToNowPlaying)
+        menu.addAction("Play next", self.addAfterCurrent)
         if self.type != "playlist":
-            menu.addAction("Add to playlist")
+            subMenu = QMenu("Add to playlist")
+            subMenu.setStyleSheet(menuStyle)
+            subMenu.addAction("New playlist", self.createNewPlaylist)
+            subMenu.addSeparator()
+            for playlist in self.control.library.playlists:
+                subMenu.addAction(playlist, self.addToExistingPlaylist)
+            menu.addMenu(subMenu)
+        else:
+            menu.addAction("Rename", self.renamePlaylist)
+            menu.addAction("Delete", self.deletePlaylist)
         menu.move(event.globalX(), event.globalY())
         menu.exec()
 
     def play(self) -> None:
-        self.control.playMediaWidget(self.type, self.name, True)
+        self.control.playMediaWidget(self.type, self.name, True, False)
 
-    def addToPlaylist(self) -> None:
-        self.control.playMediaWidget(self.type, self.name, False)
+    def addToNowPlaying(self) -> None:
+        self.control.playMediaWidget(self.type, self.name, False, False)
 
     def addAfterCurrent(self) -> None:
         self.control.playMediaWidget(self.type, self.name, False, True)
+
+    def createNewPlaylist(self) -> None:
+        inputDialog = QInputDialog()
+        inputDialog.setLabelText("Enter playlist name")
+        inputDialog.setWindowFlags(Qt.FramelessWindowHint)
+        inputDialog.exec()
+        if inputDialog.result() == QDialog.Accepted:
+            self.control.createPlaylist(inputDialog.textValue())
+            self.addToExistingPlaylist(inputDialog.textValue())
+
+    def addToExistingPlaylist(self, playlistName: str = None) -> None:
+        if playlistName is None:
+            playlistName = self.sender().text()
+        self.control.addToExistingPlaylist(playlistName, self.name, self.type)
+
+    def renamePlaylist(self) -> None:
+        inputDialog = QInputDialog()
+        inputDialog.setLabelText("Enter playlist name")
+        inputDialog.setWindowFlags(Qt.FramelessWindowHint)
+        inputDialog.exec()
+        if inputDialog.result() == QDialog.Accepted:
+            self.control.renamePlaylist(self.name, inputDialog.textValue())
+
+    def deletePlaylist(self) -> None:
+        self.control.deletePlaylist(self.name)
 
 
 def clearLayout(layout):
@@ -735,6 +755,11 @@ class MainBox(QWidget):
         self.pixmaps = {"artist": artistPixmap,
                         "album": albumPixmap,
                         "playlist": playlistPixmap}
+
+        self.activePixmaps = []
+        self.index = 0
+        for n in range(1, 8):
+            self.activePixmaps.append(QPixmap(f"{location}active{n}.png"))
 
         for scrollArea in [self.artistScrollArea, self.albumScrollArea,
                            self.playlistScrollArea, self.nowPlayingScrollArea]:
@@ -885,6 +910,8 @@ class MainBox(QWidget):
                             label = QLabel()
                             if field != "pixmap":
                                 label.setText(library.library[song][field])
+                                if field == LENGTH:
+                                    label.setAlignment(Qt.AlignRight)
                             else:
                                 label.setFixedSize(15, 15)
                                 label.setScaledContents(True)
@@ -895,15 +922,22 @@ class MainBox(QWidget):
                             column += 1
                         row += 1
 
-    def updateActiveSong(self, currentSong: str) -> None:
+    def updateActiveSong(self, currentIndex: int) -> None:
         """Shows a small image on the currently playing song for visual feedback."""
         if self.nowPlayingSong is not None:
             self.nowPlayingSong.clear()
             self.nowPlayingSong = None
-        if currentSong in self.garbageProtector:
-            label = self.garbageProtector[currentSong][4]
-            label.setPixmap(QPixmap(activePixmap))
+        if (item := self.nowPlayingLayout.itemAtPosition(currentIndex + 1, 4)) is not None:
+            label = item.widget().layout().itemAt(0).widget()
             self.nowPlayingSong = label
+
+    def activeSongPixmap(self) -> None:
+        if self.nowPlayingSong is not None:
+            self.nowPlayingSong.setPixmap(self.activePixmaps[self.index])
+            if self.index < 6:
+                self.index += 1
+            else:
+                self.index = 0
 
     def showArea(self, area: int) -> None:
         self.mainArea.setCurrentIndex(area)
@@ -919,13 +953,57 @@ class SongWidget(QWidget):
         super().__init__()
         self.control = control
         self.song = song
+        self.isNowPlaying = isNowPlaying
         if isNowPlaying:
             self.doubleClick.connect(self.control.playFromNowPlaying)
         else:
             self.doubleClick.connect(self.control.playSongList)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
-        self.doubleClick.emit(self.song)
+        if event.button() == Qt.LeftButton:
+            self.doubleClick.emit(self.song)
+
+    def contextMenuEvent(self, event: QContextMenuEvent) -> None:
+        menu = QMenu()
+        menu.setStyleSheet(menuStyle)
+        if not self.isNowPlaying:
+            menu.addAction("Play", self.play)
+            menu.addAction("Add to now playing", self.addToNowPlaying)
+        else:
+            menu.addAction("Add to end of the queue", self.addToNowPlaying)
+        menu.addAction("Play next", self.addAfterCurrent)
+        subMenu = QMenu("Add to playlist")
+        subMenu.setStyleSheet(menuStyle)
+        subMenu.addAction("New playlist", self.createNewPlaylist)
+        subMenu.addSeparator()
+        for playlist in self.control.library.playlists:
+            subMenu.addAction(playlist, self.addToExistingPlaylist)
+        menu.addMenu(subMenu)
+        menu.move(event.globalX(), event.globalY())
+        menu.exec()
+
+    def play(self) -> None:
+        self.control.playSongList(self.song)
+
+    def addToNowPlaying(self) -> None:
+        self.control.playSongWidget(self.song)
+
+    def addAfterCurrent(self) -> None:
+        self.control.playSongWidget(self.song, True)
+
+    def createNewPlaylist(self) -> None:
+        inputDialog = QInputDialog()
+        inputDialog.setLabelText("Enter playlist name")
+        inputDialog.setWindowFlags(Qt.FramelessWindowHint)
+        inputDialog.exec()
+        if inputDialog.result() == QDialog.Accepted:
+            self.control.createPlaylist(inputDialog.textValue())
+            self.addToExistingPlaylist(inputDialog.textValue())
+
+    def addToExistingPlaylist(self, playlistName: str = None) -> None:
+        if playlistName is None:
+            playlistName = self.sender().text()
+        self.control.addToExistingPlaylist(playlistName, self.song, None)
 
 
 class SongList(QWidget):
@@ -959,7 +1037,11 @@ class SongList(QWidget):
         self.songLayout.setAlignment(Qt.AlignTop)
         self.songArea.setLayout(self.songLayout)
         self.garbageProtector = {}  # Necessary for preventing C++ from deleting the objects
-        self.previousActive = None
+        self.nowPlayingSong = None
+        self.activePixmaps = []
+        self.index = 0
+        for n in range(1, 8):
+            self.activePixmaps.append(QPixmap(f"{location}active{n}.png"))
 
     def updateSongList(self, songList: list, library, currentSong: str) -> None:
         """Clear and recreate the contents when user changes selection."""
@@ -995,8 +1077,7 @@ class SongList(QWidget):
             playIcon.setScaledContents(True)
             playIcon.setAlignment(Qt.AlignRight)
             if song == currentSong and self.control.player.state() > 0:
-                playIcon.setPixmap(QPixmap(activePixmap))
-                self.previousActive = playIcon
+                self.nowPlayingSong = playIcon
                 nowPlayingIncluded = True
             buttonLayout = QHBoxLayout()
             songLabel.setLayout(buttonLayout)
@@ -1007,21 +1088,28 @@ class SongList(QWidget):
             self.garbageProtector[song] = playIcon
             self.songLayout.addWidget(songLabel)
         if not nowPlayingIncluded:
-            self.previousActive = None
+            self.nowPlayingSong = None
 
     def updateActiveSong(self, currentSong: str) -> None:
         """Shows a small image on the currently playing song for visual feedback."""
-        if self.previousActive is not None:
-            self.previousActive.clear()
-            self.previousActive = None
+        if self.nowPlayingSong is not None:
+            self.nowPlayingSong.clear()
+            self.nowPlayingSong = None
         if currentSong in self.garbageProtector:
-            self.garbageProtector[currentSong].setPixmap(QPixmap(activePixmap))
-            self.previousActive = self.garbageProtector[currentSong]
+            self.nowPlayingSong = self.garbageProtector[currentSong]
+
+    def activeSongPixmap(self) -> None:
+        if self.nowPlayingSong is not None:
+            self.nowPlayingSong.setPixmap(self.activePixmaps[self.index])
+            if self.index < 6:
+                self.index += 1
+            else:
+                self.index = 0
 
 
 class MediaButton(QWidget):
-    """A class that provides the responses to the user's clicks, works in tandem
-    with HoverLabel class which provides the visual feedback."""
+    """A class that provides the responses to the user's clicks
+    as well as visual feedback."""
 
     click = pyqtSignal()
 
@@ -1032,7 +1120,6 @@ class MediaButton(QWidget):
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
-        # self.label = HoverLabel(picture, hoverPicture)
         self.label = QLabel()
         self.label.setScaledContents(True)
         self.label.setPixmap(QPixmap(picture))
