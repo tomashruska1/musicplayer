@@ -1,5 +1,6 @@
-from time import time_ns
-
+import gzip
+import os
+import struct
 from PyQt5.QtCore import QUrl, QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QAudio, QMediaContent
 from musicplayer import gui, library
@@ -10,6 +11,8 @@ ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
 class Control:
     """A class that handles the logic behind the program by manipulating the GUI classes
     and calling their methods in response to received signals."""
+
+    MAGIC = b"\x01\xff"
 
     def __init__(self, screens: list) -> None:
         self.player = QMediaPlayer()
@@ -28,26 +31,29 @@ class Control:
         self.repeat = 0
         self.volume = 50
 
-        self.connections = [self.player.currentMediaChanged.connect(self.updateCurrentSong),
-                            self.player.durationChanged.connect(self.updateSongProgressRange),
-                            self.player.stateChanged.connect(self.playerStatusChanged),
-                            self.bottomBox.previousButton.click.connect(self.playlist.previous),
-                            self.bottomBox.repeatButton.click.connect(self.repeatButtonClick),
-                            self.bottomBox.stopButton.click.connect(self.stopButtonClick),
-                            self.bottomBox.playButton.click.connect(self.playButtonClick),
-                            self.bottomBox.randomButton.click.connect(self.randomButtonClick),
-                            self.bottomBox.nextButton.click.connect(self.playlist.next),
-                            self.bottomBox.muteButton.click.connect(self.mute),
-                            self.bottomBox.songProgress.sliderMoved.connect(self.songProgressMove),
-                            self.bottomBox.volumeControl.sliderMoved.connect(self.volumeChange)]
-
         self.volumeChange(self.volume)
         self.bottomBox.volumeControl.setValue(self.volume)
 
-        self.timer = QTimer()
-        self.timer.setInterval(100)
-        self.timer.timeout.connect(self.updateSongProgress)
-        self.timer.start()
+        self.mainTimer = QTimer()
+        self.mainTimer.setInterval(100)
+        self.mainTimer.timeout.connect(self.updateSongProgress)
+        self.mainTimer.start()
+
+        self.libraryUpdateTimer = QTimer()
+        self.libraryUpdateTimer.setInterval(15_000)
+        self.libraryUpdateTimer.timeout.connect(self.updateLibrary)
+        self.libraryUpdateTimer.start()
+
+        self.connections()
+
+        self.displayedType = None
+        self.displayedName = None
+        self.types = None
+        geo = self.load()
+        if geo:
+            self.mainWindow.setGeometry(*geo)
+            self.volumeChange(self.volume)
+            self.bottomBox.volumeControl.setValue(self.volume)
 
         self.setUpTimer = QTimer()
         self.setUpTimer.setInterval(20)
@@ -55,10 +61,19 @@ class Control:
         self.setUpTimer.timeout.connect(self.setAreas)
         self.setUpTimer.start()
 
-        self.libraryUpdateTimer = QTimer()
-        self.libraryUpdateTimer.setInterval(15_000)
-        self.libraryUpdateTimer.timeout.connect(self.updateLibrary)
-        self.libraryUpdateTimer.start()
+    def connections(self):
+        self.player.currentMediaChanged.connect(self.updateCurrentSong)
+        self.player.durationChanged.connect(self.updateSongProgressRange)
+        self.player.stateChanged.connect(self.playerStatusChanged)
+        self.bottomBox.previousButton.click.connect(self.playlist.previous)
+        self.bottomBox.repeatButton.click.connect(self.repeatButtonClick)
+        self.bottomBox.stopButton.click.connect(self.stopButtonClick)
+        self.bottomBox.playButton.click.connect(self.playButtonClick)
+        self.bottomBox.randomButton.click.connect(self.randomButtonClick)
+        self.bottomBox.nextButton.click.connect(self.playlist.next)
+        self.bottomBox.muteButton.click.connect(self.mute)
+        self.bottomBox.songProgress.sliderMoved.connect(self.songProgressMove)
+        self.bottomBox.volumeControl.sliderMoved.connect(self.volumeChange)
 
     def setAreas(self) -> None:
         """Called after the GUI is created to provide user with a feedback
@@ -67,9 +82,13 @@ class Control:
         # TODO add a tooltip that will notify the user larger amount of songs is being loaded
         #  (freezes the program as the execution moves to the Library class.)
         self.library = library.Library()
+        self.types = {"artist": self.library.getSongsForArtist,
+                      "album": self.library.getSongsForAlbum,
+                      "playlist": self.library.getSongsForPlaylist}
         self.mainBox.setAreas(self.library)
         self.setUpTimer.deleteLater()
         self.setUpTimer = None
+        self.getSongs(self.displayedType, self.displayedName)
 
     def updateLibrary(self) -> None:
         self.library.update()
@@ -92,20 +111,23 @@ class Control:
 
     def playerStatusChanged(self) -> None:
         """Used to properly update the player look after the current playlist has finished."""
-        pass
         index = self.playlist.currentIndex()
         if index == -1:
             self.stopButtonClick()
 
-    def getSongs(self, isType: str, target: str) -> None:
+    def getSongs(self, isType: str, name: str) -> None:
         """Retrieves the songs for a given artist, album or playlist based on type
         and passes the resulting list to the SongList class."""
-        types = {"artist": self.library.getSongsForArtist,
-                 "album": self.library.getSongsForAlbum,
-                 "playlist": self.library.getSongsForPlaylist}
-        self.songList.updateSongList(types[isType](target),
+        listForType = self.types[isType](name)
+        if len(listForType) == 0:
+            artists = self.library.artists
+            if len(artists):
+                listForType = self.library.getSongsForArtist(artists[0])
+        self.songList.updateSongList(listForType,
                                      self.library.library,
                                      self.currentSong)
+        self.displayedType = isType
+        self.displayedName = name
 
     def playSongList(self, song: str = None) -> None:
         """Called when user double-clicks on an artist/album/playlist widget or a song
@@ -118,6 +140,8 @@ class Control:
                 index = loopIndex
             self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(songPath)))
             loopIndex += 1
+        if self.playlist.isEmpty():
+            return
         self.player.play()
         if index > 0:
             self.playlist.setCurrentIndex(index)
@@ -134,21 +158,19 @@ class Control:
             self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(songPath)))
         self.mainBox.setNowPlayingArea(self.library)
         self.mainBox.updateActiveSong(self.playlist.currentIndex())
+        self.playing = True
 
     def playMediaWidget(self, isType: str, target: str, startOver: bool, afterCurrent: bool) -> None:
         """Called from MediaWidget - plays all songs for MediaWidget's type and name."""
-        types = {"artist": self.library.getSongsForArtist,
-                 "album": self.library.getSongsForAlbum,
-                 "playlist": self.library.getSongsForPlaylist}
         if startOver:
             self.playlist.clear()
         if afterCurrent:
             index = self.playlist.currentIndex() + 1
-            for songPath in types[isType](target):
+            for songPath in self.types[isType](target):
                 self.playlist.insertMedia(index, QMediaContent(QUrl.fromLocalFile(songPath)))
                 index += 1
         else:
-            for songPath in types[isType](target):
+            for songPath in self.types[isType](target):
                 self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(songPath)))
         if startOver:
             self.player.play()
@@ -173,11 +195,8 @@ class Control:
         self.mainBox.setMainAreaPlaylists(self.library)
 
     def addToExistingPlaylist(self, playlist: str, songOrWidget: str, isType: str) -> None:
-        types = {"artist": self.library.getSongsForArtist,
-                 "album": self.library.getSongsForAlbum,
-                 "playlist": self.library.getSongsForPlaylist}
-        if isType in types:
-            for song in types[isType](songOrWidget):
+        if isType in self.types:
+            for song in self.types[isType](songOrWidget):
                 self.library.addToPlaylist(playlist, song)
         else:
             self.library.addToPlaylist(playlist, songOrWidget)
@@ -214,16 +233,19 @@ class Control:
             self.playing = False
             self.bottomBox.updatePlayButton(self.playing, False)
 
-    def playButtonClick(self) -> None:
+    def playButtonClick(self, passMove: bool = True) -> None:
         if not self.playing:
+            if self.playlist.isEmpty():
+                self.playSongList()
+                return
             self.playing = True
             self.player.play()
+            self.mainBox.updateActiveSong(self.playlist.currentIndex())
+            self.songList.updateActiveSong(self.currentSong)
         else:
             self.playing = False
             self.player.pause()
-        self.bottomBox.updatePlayButton(self.playing)
-        self.mainBox.updateActiveSong(self.playlist.currentIndex())
-        self.songList.updateActiveSong(self.currentSong)
+        self.bottomBox.updatePlayButton(self.playing, passMove)
 
     def repeatButtonClick(self) -> None:
         if self.repeat == 0:
@@ -279,15 +301,67 @@ class Control:
         if 0 <= position < 2_000_000_000:
             if self.player.state() > 0:
                 self.bottomBox.updateSongProgress(position)
-                self.songList.activeSongPixmap()
-                self.mainBox.activeSongPixmap()
+                if self.playing:
+                    self.songList.activeSongPixmap()
+                    self.mainBox.activeSongPixmap()
             else:
                 self.bottomBox.updateSongProgress(0)
 
-    def close(self):
+    def close(self) -> None:
         self.player.stop()
-        # TODO
-        #  for connection in self.connections:
-        #      disconnect
-        #  save current state
-        self.mainWindow.close()
+        self.mainTimer.stop()
+        self.save()
+
+    def save(self) -> None:
+        with gzip.open(r"musicplayer\mpdata", "wb") as fh:
+            fh.write(self.MAGIC)
+            toBeWritten = struct.pack(f"<h{len(self.displayedType.encode())}s",
+                                      len(self.displayedType.encode()),
+                                      self.displayedType.encode())
+            fh.write(toBeWritten)
+            fh.write(self.MAGIC)
+            toBeWritten = struct.pack(f"<h{len(self.displayedName.encode())}s",
+                                      len(self.displayedName.encode()),
+                                      self.displayedName.encode())
+            fh.write(toBeWritten)
+            fh.write(self.MAGIC)
+            geo = self.mainWindow.geometry()
+            toBeWritten = struct.pack("<4h", geo.x(), geo.y(), geo.width(), geo.height())
+            fh.write(toBeWritten)
+            toBeWritten = struct.pack("<h", self.volume)
+            fh.write(toBeWritten)
+
+    def load(self) -> [bool, tuple]:
+        try:
+            with gzip.open(r"musicplayer\mpdata", "rb") as fh:
+                if not fh.read(2) == self.MAGIC:
+                    return False
+                length = fh.read(2)
+                length = struct.unpack("<h", length)[0]
+                displayedType = fh.read(length)
+                displayedType = struct.unpack(f"<{length}s", displayedType)[0].decode("utf8")
+                if displayedType in ["artist", "album", "playlist"]:
+                    self.displayedType = displayedType
+                if not fh.read(2) == self.MAGIC:
+                    return False
+                length = fh.read(2)
+                length = struct.unpack("<h", length)[0]
+                displayedName = fh.read(length)
+                displayedName = struct.unpack(f"<{length}s", displayedName)[0].decode("utf8")
+                if not fh.read(2) == self.MAGIC:
+                    return False
+                self.displayedName = displayedName
+                x = fh.read(2)
+                x = struct.unpack("<h", x)[0]
+                y = fh.read(2)
+                y = struct.unpack("<h", y)[0]
+                width = fh.read(2)
+                width = struct.unpack("<h", width)[0]
+                height = fh.read(2)
+                height = struct.unpack("<h", height)[0]
+                volume = fh.read(2)
+                volume = struct.unpack("<h", volume)[0]
+                self.volume = volume
+                return x, y, width, height
+        except (EOFError, FileNotFoundError, PermissionError, struct.error):
+            return False
