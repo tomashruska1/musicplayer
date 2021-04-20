@@ -1,7 +1,9 @@
-from PyQt5.QtCore import (QSize, Qt, QPoint, QTimer, QRect, pyqtSignal, QEvent)
+from typing import Any
+from PyQt5.QtCore import (QSize, Qt, QPoint, QTimer, QRect, pyqtSignal)
 from PyQt5.QtGui import (QColor, QFont, QPalette, QCursor,
                          QMouseEvent, QPixmap, QResizeEvent,
-                         QContextMenuEvent)
+                         QContextMenuEvent, QCloseEvent,
+                         QKeyEvent)
 from PyQt5.QtWidgets import (QFrame, QWidget, QApplication,
                              QHBoxLayout, QLabel, QMainWindow,
                              QPushButton, QMenu, QVBoxLayout,
@@ -129,8 +131,9 @@ class MainWindow(QMainWindow):
         color.setColor(QPalette.Background, QColor(20, 20, 20))
         self.setPalette(color)
         self.setCentralWidget(self.mainWidget)
-        self.menuBar = self.mainWidget.bar()
+        self.menuBar = self.mainWidget.menus
         self.setMinimumSize(1200, 950)
+        self.setFocusPolicy(Qt.StrongFocus)
 
         self.timer = QTimer()
         self.timer.setInterval(200)
@@ -196,6 +199,14 @@ class MainWindow(QMainWindow):
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self.right = self.left = self.up = self.down = False
 
+    def closeEvent(self, event: QCloseEvent) -> None:
+        self.control.close()
+        event.accept()
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key_Space:
+            self.control.playButtonClick(False)
+
 
 class MainWidget(QWidget):
     """A container for child widgets responsible for general layout."""
@@ -216,9 +227,6 @@ class MainWidget(QWidget):
         self.layout.addWidget(line)
         self.bottomBox = BottomBox(self.parent, self.upperBox.songList)
         self.layout.addWidget(self.bottomBox)
-
-    def bar(self) -> QWidget:
-        return self.menus
 
 
 class FoldersDialog(QDialog):
@@ -414,7 +422,7 @@ class MenuBar(QWidget):
         buttonSize = 30
 
         self.closeButton = QPushButton(chr(0x1f5d9))
-        self.closeButton.clicked.connect(self.control.close)
+        self.closeButton.clicked.connect(self.window.close)
         self.closeButton.setFixedSize(buttonSize, buttonSize)
         self.closeButton.setStyleSheet("QPushButton:!hover {"
                                        "    border-style: none;"
@@ -1127,13 +1135,13 @@ class MediaButton(QWidget):
         self.hoverPicture = hoverPicture
         self.layout.addWidget(self.label)
 
-    def mousePressEvent(self, ignore: QMouseEvent) -> None:
+    def mousePressEvent(self, ignore: Any) -> None:
         self.click.emit()
 
-    def enterEvent(self, event: QEvent) -> None:
+    def enterEvent(self, ignore: Any) -> None:
         self.label.setPixmap(QPixmap(self.hoverPicture))
 
-    def leaveEvent(self, ignore: QMouseEvent) -> None:
+    def leaveEvent(self, ignore: Any) -> None:
         self.label.setPixmap(QPixmap(self.normalPicture))
 
     def updatePictures(self, picture: str, hoverPicture: str, moveMouse: bool = True) -> None:
@@ -1162,7 +1170,7 @@ class JumpSlider(QSlider):
             self.setSliderPosition(newPosition)
             self.sliderMoved.emit(newPosition)
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+    def mouseReleaseEvent(self, event: Any) -> None:
         self.pressed = False
 
 
