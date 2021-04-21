@@ -119,13 +119,17 @@ class Control:
         """Retrieves the songs for a given artist, album or playlist based on type
         and passes the resulting list to the SongList class."""
         listForType = self.types[isType](name)
+        playlist = None
+        if isType == "playlist":
+            playlist = name
         if len(listForType) == 0:
             artists = self.library.artists
             if len(artists):
                 listForType = self.library.getSongsForArtist(artists[0])
         self.songList.updateSongList(listForType,
                                      self.library.library,
-                                     self.currentSong)
+                                     self.currentSong,
+                                     playlist)
         self.displayedType = isType
         self.displayedName = name
 
@@ -201,6 +205,12 @@ class Control:
         else:
             self.library.addToPlaylist(playlist, songOrWidget)
         self.library.update()
+
+    def removeFromPlaylist(self, playlist: str, song: str) -> None:
+        self.library.deleteFromPlaylist(playlist, song)
+        self.mainBox.setMainAreaPlaylists(self.library)
+        self.library.update()
+        self.getSongs("playlist", playlist)
 
     def renamePlaylist(self, playlistName: str, newPlaylistName: str) -> None:
         self.library.renamePlaylist(playlistName, newPlaylistName)
@@ -313,6 +323,7 @@ class Control:
         self.save()
 
     def save(self) -> None:
+        """Called on exit, saves current view, geometry and volume."""
         with gzip.open(r"musicplayer\mpdata", "wb") as fh:
             fh.write(self.MAGIC)
             toBeWritten = struct.pack(f"<h{len(self.displayedType.encode())}s",
@@ -332,6 +343,7 @@ class Control:
             fh.write(toBeWritten)
 
     def load(self) -> [bool, tuple]:
+        """Called on startup, loads view, geometry and volume saved on previous run."""
         try:
             with gzip.open(r"musicplayer\mpdata", "rb") as fh:
                 if not fh.read(2) == self.MAGIC:
@@ -351,17 +363,13 @@ class Control:
                 if not fh.read(2) == self.MAGIC:
                     return False
                 self.displayedName = displayedName
-                x = fh.read(2)
-                x = struct.unpack("<h", x)[0]
-                y = fh.read(2)
-                y = struct.unpack("<h", y)[0]
-                width = fh.read(2)
-                width = struct.unpack("<h", width)[0]
-                height = fh.read(2)
-                height = struct.unpack("<h", height)[0]
-                volume = fh.read(2)
-                volume = struct.unpack("<h", volume)[0]
+                variables = []
+                for n in range(5):
+                    var = fh.read(2)
+                    var = struct.unpack("<h", var)[0]
+                    variables.append(var)
+                x, y, width, height, volume = variables
                 self.volume = volume
                 return x, y, width, height
-        except (EOFError, FileNotFoundError, PermissionError, struct.error):
+        except Exception:
             return False
