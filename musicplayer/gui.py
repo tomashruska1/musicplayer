@@ -10,7 +10,7 @@ from PyQt5.QtWidgets import (QFrame, QWidget, QApplication,
                              QSizeGrip, QSlider, QStackedWidget,
                              QScrollArea, QScrollBar, QLayout,
                              QSizePolicy, QFileDialog, QDialog,
-                             QGridLayout, QLayoutItem, QInputDialog)
+                             QGridLayout, QLayoutItem, QLineEdit)
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
 
@@ -134,6 +134,7 @@ class MainWindow(QMainWindow):
         self.menuBar = self.mainWidget.menus
         self.setMinimumSize(1200, 950)
         self.setFocusPolicy(Qt.StrongFocus)
+        self.setMouseTracking(True)
 
         self.timer = QTimer()
         self.timer.setInterval(200)
@@ -166,37 +167,45 @@ class MainWindow(QMainWindow):
             else:
                 self.setCursor(Qt.ArrowCursor)
 
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        """Sets one of the directional variables to True, to allow
+        ensuring that the window is only resized to/from that direction."""
+        if event.pos().x() < 5:
+            self.left = True
+        elif event.pos().x() > self.width() - 5:
+            self.right = True
+        elif event.pos().y() < 5:
+            self.up = True
+        elif event.pos().y() > self.height() - 5:
+            self.down = True
+
     def resizeEvent(self, event: QResizeEvent) -> None:
         super().resizeEvent(event)
         rect = self.rect()
         self.grips[1].move(rect.right() - self.gripSize, 0)
-        self.grips[2].move(
-            rect.right() - self.gripSize, rect.bottom() - self.gripSize)
+        self.grips[2].move(rect.right() - self.gripSize, rect.bottom() - self.gripSize)
         self.grips[3].move(0, rect.bottom() - self.gripSize)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        # TODO add check for which side the mouse is at, only allow drag if near that side
+        """Checks if a directional variable, and only one at a time, is True,
+        allows resizing only to/from that direction."""
         if not self.isMaximized():
-            if event.pos().x() < 5 or self.left:
-                self.left = True
+            if self.left and not any([self.right, self.up, self.down]):
                 geo = self.geometry()
                 geo.setLeft(geo.left() + event.pos().x())
                 if geo.right() - geo.left() > self.minimumWidth():
                     self.setGeometry(geo)
-            elif event.pos().x() > self.width() - 5 or self.right:
-                self.right = True
+            elif self.right and not any([self.left, self.up, self.down]):
                 self.resize(event.pos().x(), self.height())
-            elif 5 > event.pos().y() or self.up:
-                self.up = True
+            elif self.up and not any([self.left, self.right, self.down]):
                 geo = self.geometry()
                 geo.setTop(geo.top() + event.pos().y())
                 if geo.bottom() - geo.top() > self.minimumHeight():
                     self.setGeometry(geo)
-            elif event.pos().y() > self.height() - 5 or self.down:
-                self.down = True
+            elif self.down and not any([self.left, self.right, self.up]):
                 self.resize(self.width(), event.pos().y())
 
-    def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+    def mouseReleaseEvent(self, event: Any) -> None:
         self.right = self.left = self.up = self.down = False
 
     def closeEvent(self, event: QCloseEvent) -> None:
@@ -206,6 +215,14 @@ class MainWindow(QMainWindow):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         if event.key() == Qt.Key_Space:
             self.control.playButtonClick(False)
+        elif event.key() == Qt.Key_MediaNext:
+            self.control.playlist.next()
+        elif event.key() == Qt.Key_MediaPrevious:
+            self.control.playlist.previous()
+        elif event.key() in [Qt.Key_MediaPlay, Qt.Key_MediaPause, Qt.Key_MediaTogglePlayPause]:
+            self.control.playButtonClick(False)
+        elif event.key() == Qt.Key_MediaStop:
+            self.control.stopButtonClick()
 
 
 class MainWidget(QWidget):
@@ -217,7 +234,7 @@ class MainWidget(QWidget):
         self.window = window
         self.control = control
         self.setLayout(self.layout)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setContentsMargins(5, 5, 5, 5)
         self.menus = MenuBar(self.window, self.control, screens)
         self.layout.addWidget(self.menus)
         self.upperBox = UpperBox(self.control)
@@ -494,8 +511,8 @@ class MenuBar(QWidget):
                     else:
                         self.end = self.mapToGlobal(event.pos())
                         self.movement = self.end - self.start
-                        self.window.setGeometry(self.mapToGlobal(self.movement).x(),
-                                                self.mapToGlobal(self.movement).y(),
+                        self.window.setGeometry(self.window.pos().x() + self.movement.x(),
+                                                self.window.pos().y() + self.movement.y(),
                                                 self.window.width(),
                                                 self.window.height())
                         self.start = self.end
@@ -597,10 +614,50 @@ class FlowLayout(QLayout):
         return len(self.items)
 
 
+class PlaylistDialog(QDialog):
+    """QDialog sub-class to supplant a QInputDialog as it can't be styled to have a look
+    that is coherent with the rest of the program."""
+
+    def __init__(self, optionalText: str = "") -> None:
+        super().__init__()
+        self.setWindowFlags(Qt.FramelessWindowHint)
+        self.setLayout(QVBoxLayout())
+        self.layout().addWidget(QLabel("Enter playlist name:"))
+        self.edit = QLineEdit()
+        self.edit.setMaxLength(30)
+        self.edit.setFrame(False)
+        self.edit.setText(optionalText)
+        self.edit.returnPressed.connect(self.accept)
+        self.layout().addWidget(self.edit)
+        self.setStyleSheet("QDialog {"
+                           "    background-color: #141414;"
+                           "    border-style: solid;"
+                           "    border-width: 3px;"
+                           "    border-color: #303030;"
+                           "}"
+                           "QLabel {"
+                           "    color: #afafaf;"
+                           "    font-size: 12px;"
+                           "    font-weight: bold;"
+                           "}"
+                           "QLineEdit {"
+                           "    background-color: #303030;"
+                           "    border-color: #000000;"
+                           "    border-width: 2px;"
+                           "    color: #afafaf;"
+                           "    font-size: 12px;"
+                           "}")
+        self.text = None
+
+    def accept(self) -> None:
+        self.text = self.edit.text()
+        super().accept()
+
+
 class MediaWidget(QWidget):
     """A class with click and double-click events implemented to ensure proper reactions.
     Click displays songs for the particular artist, album, or playlist,
-    double click puts these to the playlist and starts playback."""
+    double click puts these to the QMediaPlaylist and starts playback."""
 
     click = pyqtSignal(str, str)
     doubleClick = pyqtSignal()
@@ -651,13 +708,11 @@ class MediaWidget(QWidget):
         self.control.playMediaWidget(self.type, self.name, False, True)
 
     def createNewPlaylist(self) -> None:
-        inputDialog = QInputDialog()
-        inputDialog.setLabelText("Enter playlist name")
-        inputDialog.setWindowFlags(Qt.FramelessWindowHint)
+        inputDialog = PlaylistDialog()
         inputDialog.exec()
         if inputDialog.result() == QDialog.Accepted:
-            self.control.createPlaylist(inputDialog.textValue())
-            self.addToExistingPlaylist(inputDialog.textValue())
+            self.control.createPlaylist(inputDialog.text)
+            self.addToExistingPlaylist(inputDialog.text)
 
     def addToExistingPlaylist(self, playlistName: str = None) -> None:
         if playlistName is None:
@@ -665,18 +720,16 @@ class MediaWidget(QWidget):
         self.control.addToExistingPlaylist(playlistName, self.name, self.type)
 
     def renamePlaylist(self) -> None:
-        inputDialog = QInputDialog()
-        inputDialog.setLabelText("Enter playlist name")
-        inputDialog.setWindowFlags(Qt.FramelessWindowHint)
+        inputDialog = PlaylistDialog(self.name)
         inputDialog.exec()
         if inputDialog.result() == QDialog.Accepted:
-            self.control.renamePlaylist(self.name, inputDialog.textValue())
+            self.control.renamePlaylist(self.name, inputDialog.text)
 
     def deletePlaylist(self) -> None:
         self.control.deletePlaylist(self.name)
 
 
-def clearLayout(layout):
+def clearLayout(layout: QLayout) -> None:
     """Used to remove widgets from various layouts"""
     if layout.count():
         while (item := layout.takeAt(0)) is not None:
@@ -953,15 +1006,18 @@ class MainBox(QWidget):
 
 class SongWidget(QWidget):
     """A class representing a song in the Now Playing/right-hand side panel.
-    Allows for double-clicking in either area to jump playback to the particular song."""
+    Allows for double-clicking in either area to jump playback to the particular song.
+    Argument isNowPlaying is used to determine the placement of the widget,
+    isPlaylist is used to determine whether the widget represents a song in a playlist."""
 
     doubleClick = pyqtSignal(str)
 
-    def __init__(self, control, song: str, isNowPlaying: bool = False) -> None:
+    def __init__(self, control, song: str, isNowPlaying: bool = False, playlist: str = None) -> None:
         super().__init__()
         self.control = control
         self.song = song
         self.isNowPlaying = isNowPlaying
+        self.playlist = playlist
         if isNowPlaying:
             self.doubleClick.connect(self.control.playFromNowPlaying)
         else:
@@ -980,13 +1036,17 @@ class SongWidget(QWidget):
         else:
             menu.addAction("Add to end of the queue", self.addToNowPlaying)
         menu.addAction("Play next", self.addAfterCurrent)
-        subMenu = QMenu("Add to playlist")
-        subMenu.setStyleSheet(menuStyle)
-        subMenu.addAction("New playlist", self.createNewPlaylist)
-        subMenu.addSeparator()
-        for playlist in self.control.library.playlists:
-            subMenu.addAction(playlist, self.addToExistingPlaylist)
-        menu.addMenu(subMenu)
+        if self.playlist is None:
+            subMenu = QMenu("Add to playlist")
+            subMenu.setStyleSheet(menuStyle)
+            subMenu.addAction("New playlist", self.createNewPlaylist)
+            subMenu.addSeparator()
+            for playlist in self.control.library.playlists:
+                subMenu.addAction(playlist, self.addToExistingPlaylist)
+            menu.addMenu(subMenu)
+        else:
+            menu.addSeparator()
+            menu.addAction("Remove from the playlist", self.removeFromPlaylist)
         menu.move(event.globalX(), event.globalY())
         menu.exec()
 
@@ -1000,18 +1060,19 @@ class SongWidget(QWidget):
         self.control.playSongWidget(self.song, True)
 
     def createNewPlaylist(self) -> None:
-        inputDialog = QInputDialog()
-        inputDialog.setLabelText("Enter playlist name")
-        inputDialog.setWindowFlags(Qt.FramelessWindowHint)
+        inputDialog = PlaylistDialog()
         inputDialog.exec()
         if inputDialog.result() == QDialog.Accepted:
-            self.control.createPlaylist(inputDialog.textValue())
-            self.addToExistingPlaylist(inputDialog.textValue())
+            self.control.createPlaylist(inputDialog.text)
+            self.addToExistingPlaylist(inputDialog.text)
 
     def addToExistingPlaylist(self, playlistName: str = None) -> None:
         if playlistName is None:
             playlistName = self.sender().text()
         self.control.addToExistingPlaylist(playlistName, self.song, None)
+
+    def removeFromPlaylist(self) -> None:
+        self.control.removeFromPlaylist(self.playlist, self.song)
 
 
 class SongList(QWidget):
@@ -1051,7 +1112,7 @@ class SongList(QWidget):
         for n in range(1, 8):
             self.activePixmaps.append(QPixmap(f"{location}active{n}.png"))
 
-    def updateSongList(self, songList: list, library, currentSong: str) -> None:
+    def updateSongList(self, songList: list, library, currentSong: str, isPlaylist: str) -> None:
         """Clear and recreate the contents when user changes selection."""
         style = ("color:#afafaf;"
                  "font-size: 13px;")
@@ -1075,7 +1136,7 @@ class SongList(QWidget):
             songLength.setAlignment(Qt.AlignRight)
             songLength.setStyleSheet(style)
             songLength.setFixedWidth(33)
-            songLabel = SongWidget(self.control, song)
+            songLabel = SongWidget(self.control, song, playlist=isPlaylist)
             songLabel.setFixedWidth(350)
             songLabel.setStyleSheet("background-color:#141414;"
                                     "color:#afafaf;"
