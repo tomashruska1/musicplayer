@@ -105,7 +105,7 @@ class Library:
             self._files = temp
             self.timestamp = datetime.datetime.strptime(timestamp, Library.format_spec)
             return True
-        except (EOFError, FileNotFoundError, PermissionError):
+        except Exception:
             return False
 
     def _save(self) -> None:
@@ -238,6 +238,7 @@ class Library:
         if playlist in self._playlists:
             if song in self._playlists[playlist]:
                 self._playlists[playlist].remove(song)
+                self.changed = True
 
     def getSongsForArtist(self, artist: str, newFirst: bool = False) -> list:
         """Returns a list of all song paths for a given artist with optional sorting new first."""
@@ -260,4 +261,6 @@ class Library:
         return songs
 
     def getSongsForPlaylist(self, playlist: str) -> list:
-        return self._playlists[playlist]
+        if playlist in self._playlists:
+            return self._playlists[playlist]
+        return []
