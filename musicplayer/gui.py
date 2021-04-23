@@ -1,5 +1,6 @@
 from typing import Any
-from PyQt5.QtCore import (QSize, Qt, QPoint, QTimer, QRect, pyqtSignal)
+from PyQt5.QtCore import (QSize, Qt, QPoint, QTimer, QRect, pyqtSignal,
+                          QEvent)
 from PyQt5.QtGui import (QColor, QFont, QPalette, QCursor,
                          QMouseEvent, QPixmap, QResizeEvent,
                          QContextMenuEvent, QCloseEvent,
@@ -10,7 +11,7 @@ from PyQt5.QtWidgets import (QFrame, QWidget, QApplication,
                              QSizeGrip, QSlider, QStackedWidget,
                              QScrollArea, QScrollBar, QLayout,
                              QSizePolicy, QFileDialog, QDialog,
-                             QGridLayout, QLayoutItem, QLineEdit)
+                             QGridLayout, QLayoutItem, QLineEdit,)
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
 
@@ -22,27 +23,50 @@ minMaxButtonStyle = ("QPushButton:!hover {"
                      "}")
 
 scrollBarStyle = ("QScrollBar:vertical {"
-                  "    background: #141414;"
-                  "    width: 5px;"
+                  "    background-color: #141414;"
+                  "    width: 7px;"
                   "}"
                   "QScrollBar::handle:vertical {"
-                  "    background: #303030;"
+                  "    background-color: #303030;"
+                  "    min-height: 5px;"
+                  "    border-radius: 4px;"
+                  "}"
+                  "QScrollBar::handle:hover {"
+                  "    background-color: #454545;"
+                  "    width: 25px;"
                   "}"
                   "QScrollBar::add-line:vertical {"
-                  "    background: #141414;"
+                  "    background-color: #141414;"
+                  "    height: 10px;"
+                  "    width: 7px;"
                   "    subcontrol-position: bottom;"
                   "    subcontrol-origin: margin;"
+                  "    margin: 3px 0px 3px 0px;"
                   "}"
                   "QScrollBar::sub-line:vertical {"
-                  "    background: #141414;"
+                  "    background-color: #141414;"
+                  "    height: 10px;"
+                  "    width: 7px;"
                   "    subcontrol-position: top;"
                   "    subcontrol-origin: margin;"
+                  "    margin: 3px 0px 3px 0px;"
                   "}"
                   "QScrollBar::add-page:vertical,"
                   "QScrollBar::sub-page:vertical {"
-                  "    background: none;"
+                  "    background-color: none;"
+                  "}"
+                  "QScrollBar::sub-line:vertical:hover,"
+                  "QScrollBar::sub-line:vertical:on {"
+                  "    subcontrol-position: top;"
+                  "    subcontrol-origin: margin;"
+                  "}"
+                  "QScrollBar::add-line:vertical:hover,"
+                  "QScrollBar::add-line:vertical:on {"
+                  "    subcontrol-position: bottom;"
+                  "    subcontrol-origin: margin;"
                   "}"
                   )
+
 
 sliderStyle = ("QSlider::groove:horizontal {"
                "    border: 1px solid #999999;"
@@ -132,7 +156,7 @@ class MainWindow(QMainWindow):
         self.setPalette(color)
         self.setCentralWidget(self.mainWidget)
         self.menuBar = self.mainWidget.menus
-        self.setMinimumSize(1200, 950)
+        self.setMinimumSize(1000, 800)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setMouseTracking(True)
 
@@ -148,6 +172,7 @@ class MainWindow(QMainWindow):
         self.start = QPoint(0, 0)
         self.gripSize = 10
         self.grips = []
+        self.pressedForMenuBar = False
         for i in range(4):
             grip = QSizeGrip(self)
             grip.setStyleSheet("background-color: transparent")
@@ -175,7 +200,11 @@ class MainWindow(QMainWindow):
         elif event.pos().x() > self.width() - 5:
             self.right = True
         elif event.pos().y() < 5:
-            self.up = True
+            if self.isMaximized():
+                self.pressedForMenuBar = True
+                self.menuBar.mousePressEvent(event)
+            else:
+                self.up = True
         elif event.pos().y() > self.height() - 5:
             self.down = True
 
@@ -185,11 +214,15 @@ class MainWindow(QMainWindow):
         self.grips[1].move(rect.right() - self.gripSize, 0)
         self.grips[2].move(rect.right() - self.gripSize, rect.bottom() - self.gripSize)
         self.grips[3].move(0, rect.bottom() - self.gripSize)
+        self.centralWidget().upperBox.updateGeometry()
+        self.centralWidget().upperBox.line.resizeWidgets()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         """Checks if a directional variable, and only one at a time, is True,
         allows resizing only to/from that direction."""
-        if not self.isMaximized():
+        if self.isMaximized() or self.pressedForMenuBar:
+            self.menuBar.mouseMoveEvent(event)
+        else:
             if self.left and not any([self.right, self.up, self.down]):
                 geo = self.geometry()
                 geo.setLeft(geo.left() + event.pos().x())
@@ -207,6 +240,7 @@ class MainWindow(QMainWindow):
 
     def mouseReleaseEvent(self, event: Any) -> None:
         self.right = self.left = self.up = self.down = False
+        self.pressedForMenuBar = False
 
     def closeEvent(self, event: QCloseEvent) -> None:
         self.control.close()
@@ -357,7 +391,7 @@ class FoldersDialog(QDialog):
             self.highlightedLabel = None
 
 
-class MenuLabel(QLabel):
+class Icon(QLabel):
     """A QLabel sub-class that serves as an icon to the gui and a menu button."""
 
     def __init__(self, window: QMainWindow, control, image: str) -> None:
@@ -417,7 +451,7 @@ class MenuBar(QWidget):
                            "color:#afafaf;"
                            "font-weight:bold;")
 
-        self.logo = MenuLabel(self.window, self.control, logo)
+        self.logo = Icon(self.window, self.control, logo)
         self.logo.setFixedSize(30, 30)
         self.layout.addWidget(self.logo)
         self.title = QLabel("My player")
@@ -474,14 +508,8 @@ class MenuBar(QWidget):
             self.window.showNormal()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        if any([event.pos().y() < 5,
-                not 5 < event.pos().x() < self.width() - 5,
-                self.pressedForParent]):
-            self.pressedForParent = True
-            self.window.mousePressEvent(event)
-        else:
-            self.start = self.mapToGlobal(event.pos())
-            self.mousePressed = True
+        self.start = self.mapToGlobal(event.pos())
+        self.mousePressed = True
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self.mousePressed = self.pressedForParent = False
@@ -518,6 +546,44 @@ class MenuBar(QWidget):
                         self.start = self.end
 
 
+class Line(QWidget):
+    """A separator that can be used to resize adjacent widgets while respecting
+    their maximum/minimum size properties."""
+
+    def __init__(self, orientation: [QFrame.VLine, QFrame.HLine], leftWidget: QWidget, rightWidget: QWidget):
+        super().__init__()
+        self.line = QFrame()
+        self.line.setFrameShape(orientation)
+        self.setLayout(QVBoxLayout())
+        self.layout().setContentsMargins(0, 0, 0, 0)
+        self.layout().addWidget(self.line)
+        self.leftWidget = leftWidget
+        self.rightWidget = rightWidget
+
+    def enterEvent(self, event: QEvent) -> None:
+        self.setCursor(Qt.SizeHorCursor)
+
+    def leaveEvent(self, event: QEvent) -> None:
+        self.setCursor(Qt.ArrowCursor)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        # TODO implement capability for vertical movement
+        self.resizeWidgets(event.pos().x())
+
+    def resizeWidgets(self, move: int = None) -> None:
+        if move is None:
+            move = self.rightWidget.geometry().width()
+        geo = self.geometry()
+        if self.leftWidget.minimumWidth() < self.leftWidget.width() + move < self.leftWidget.maximumWidth() and \
+                self.rightWidget.minimumWidth() < self.rightWidget.width() - move < self.rightWidget.maximumWidth():
+            self.setGeometry(geo.x() + move, geo.y(), geo.width(), geo.height())
+            leftGeo = self.leftWidget.geometry()
+            self.leftWidget.setGeometry(leftGeo.x(), leftGeo.y(), leftGeo.width() + move, leftGeo.height())
+            rightGeo = self.rightWidget.geometry()
+            self.rightWidget.preferredWidth = rightGeo.width() - move
+            self.rightWidget.setGeometry(rightGeo.x() + move, rightGeo.y(), rightGeo.width() - move, rightGeo.height())
+
+
 class UpperBox(QWidget):
     """A container for the layouts providing access to artists and albums and the layout providing
     access to songs for the selected artist/album/playlist."""
@@ -528,12 +594,12 @@ class UpperBox(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
         self.control = control
-        self.songList = SongList(self.control)
+        self.songList = SongList(self.control, self)
         self.mainBox = MainBox(self.control, self)
-        self.layout.addWidget(self.mainBox)
-        line = QFrame()
-        line.setFrameShape(QFrame.VLine)
-        self.layout.addWidget(line)
+        self.line = Line(QFrame.VLine, self.mainBox, self.songList)
+        self.layout.addWidget(self.mainBox, stretch=1)
+        self.layout.addWidget(self.line)
+        self.layout.addSpacing(10)
         self.layout.addWidget(self.songList)
 
 
@@ -761,7 +827,6 @@ class MainBox(QWidget):
         self.mainArea = QStackedWidget()
         self.layout.addWidget(self.mainArea)
 
-        # TODO drag scrollbar to move the view
         self.artistScrollArea = QScrollArea()
         self.artistScrollBar = QScrollBar(Qt.Vertical, self.artistScrollArea)
         self.artistArea = QWidget()
@@ -1079,13 +1144,13 @@ class SongList(QWidget):
     """A class responsible for creating and updating the right-hand side panel
     that contains the songs for the currently selected artist/album/playlist."""
 
-    def __init__(self, control) -> None:
+    def __init__(self, control, parentWidget: QWidget) -> None:
         super().__init__()
         # TODO song ordering
-        # TODO resizing
-        self.setFixedWidth(360)
-        # self.setMaximumWidth(400)
-        # self.setMinimumWidth(320)
+        self.setMaximumWidth(500)
+        self.setMinimumWidth(300)
+        self.parentWidget = parentWidget
+        self.preferredWidth = None
         self.control = control
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0, 0, 2, 0)
@@ -1102,8 +1167,6 @@ class SongList(QWidget):
         self.songArea = QWidget()
         self.scrollArea.setWidget(self.songArea)
         self.songLayout = QVBoxLayout()
-        self.songLayout.setSpacing(0)
-        self.songLayout.setAlignment(Qt.AlignTop)
         self.songArea.setLayout(self.songLayout)
         self.garbageProtector = {}  # Necessary for preventing C++ from deleting the objects
         self.nowPlayingSong = None
@@ -1137,7 +1200,9 @@ class SongList(QWidget):
             songLength.setStyleSheet(style)
             songLength.setFixedWidth(33)
             songLabel = SongWidget(self.control, song, playlist=isPlaylist)
-            songLabel.setFixedWidth(350)
+            songLabel.setSizePolicy(QSizePolicy(QSizePolicy.Expanding,
+                                                QSizePolicy.Maximum,
+                                                QSizePolicy.Label))
             songLabel.setStyleSheet("background-color:#141414;"
                                     "color:#afafaf;"
                                     "border-style: none;")
@@ -1174,6 +1239,10 @@ class SongList(QWidget):
                 self.index += 1
             else:
                 self.index = 0
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        if self.preferredWidth is not None:
+            self.parentWidget.line.resizeWidgets(self.width() - self.preferredWidth)
 
 
 class MediaButton(QWidget):
