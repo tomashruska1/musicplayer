@@ -1,5 +1,4 @@
 import gzip
-import os
 import struct
 from PyQt5.QtCore import QUrl, QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QAudio, QMediaContent
@@ -49,9 +48,10 @@ class Control:
         self.displayedType = None
         self.displayedName = None
         self.types = None
-        geo = self.load()
-        if geo:
-            self.mainWindow.setGeometry(*geo)
+        self.songListWidth = None
+        values = self.load()
+        if values:
+            self.mainWindow.setGeometry(*values)
             self.volumeChange(self.volume)
             self.bottomBox.volumeControl.setValue(self.volume)
 
@@ -89,6 +89,10 @@ class Control:
         self.setUpTimer.deleteLater()
         self.setUpTimer = None
         self.getSongs(self.displayedType, self.displayedName)
+        if self.songListWidth is not None:
+            songListGeometry = self.songList.geometry()
+            self.songList.preferredWidth = songListGeometry.width() - self.songListWidth
+            self.mainWindow.centralWidget().upperBox.line.resizeWidgets(songListGeometry.width() - self.songListWidth)
 
     def updateLibrary(self) -> None:
         self.library.update()
@@ -341,6 +345,8 @@ class Control:
             fh.write(toBeWritten)
             toBeWritten = struct.pack("<h", self.volume)
             fh.write(toBeWritten)
+            toBeWritten = struct.pack("<h", self.songList.width())
+            fh.write(toBeWritten)
 
     def load(self) -> [bool, tuple]:
         """Called on startup, loads view, geometry and volume saved on previous run."""
@@ -364,12 +370,13 @@ class Control:
                     return False
                 self.displayedName = displayedName
                 variables = []
-                for n in range(5):
+                for n in range(6):
                     var = fh.read(2)
                     var = struct.unpack("<h", var)[0]
                     variables.append(var)
-                x, y, width, height, volume = variables
+                x, y, width, height, volume, songListWidth = variables
                 self.volume = volume
+                self.songListWidth = songListWidth
                 return x, y, width, height
         except Exception:
             return False
