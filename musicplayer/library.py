@@ -39,6 +39,11 @@ class Library:
             if file not in self.tempFiles:
                 del self._files[file]
                 self.changed = True
+        for playlist in self._playlists:
+            for song in self._playlists[playlist]:
+                if song not in self.tempFiles:
+                    self._playlists[playlist].remove(song)
+                    self.changed = True
         self.tempFiles.clear()
         if self.changed:
             self._save()
@@ -240,7 +245,7 @@ class Library:
                 self._playlists[playlist].remove(song)
                 self.changed = True
 
-    def getSongsForArtist(self, artist: str, newFirst: bool = False) -> list:
+    def getSongsForArtist(self, artist: str, orderBy: str, newFirst: bool = False) -> list:
         """Returns a list of all song paths for a given artist with optional sorting new first."""
         songs = []
         for song in self._files:
@@ -249,10 +254,14 @@ class Library:
                     songs.append(song)
         songs.sort(key=lambda x: (self._files[x][self.ALBUM], self._files[x][self.DISC],
                                   self._files[x][self.TRACK]))
-        songs.sort(key=lambda x: self._files[x][self.YEAR], reverse=newFirst)
+        if orderBy == "Year":
+            songs.sort(key=lambda x: self._files[x][self.YEAR], reverse=newFirst)
+        elif orderBy == "Album":
+            songs.sort(key=lambda x: self._files[x][self.ALBUM], reverse=newFirst)
         return songs
 
-    def getSongsForAlbum(self, album: str) -> list:
+    def getSongsForAlbum(self, album: str, orderBy: str, newFirst: bool = False) -> list:
+        # TODO meaningful ordering for albums
         songs = []
         for song in self._files:
             if os.path.exists(song):
@@ -260,7 +269,8 @@ class Library:
                     songs.append(song)
         return songs
 
-    def getSongsForPlaylist(self, playlist: str) -> list:
+    def getSongsForPlaylist(self, playlist: str, orderBy: str, newFirst: bool = False) -> list:
+        # TODO meaningful ordering for playlists
         if playlist in self._playlists:
             return self._playlists[playlist]
         return []
