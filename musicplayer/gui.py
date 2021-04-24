@@ -112,7 +112,6 @@ if __name__ == '__main__':
 else:
     location = r"musicplayer\resources\\"
 
-
 artistPixmap = location + "artist.png"
 albumPixmap = location + "album.png"
 playlistPixmap = location + "playlist.png"
@@ -150,7 +149,7 @@ class MainWindow(QMainWindow):
         super().__init__(flags=Qt.FramelessWindowHint)
         self.setWindowTitle("My player")
         self.control = control
-        self.mainWidget = MainWidget(self, self.control, screens)
+        self.mainWidget = MainWidget(self.control, self, screens)
         color = QPalette()
         color.setColor(QPalette.Background, QColor(20, 20, 20))
         self.setPalette(color)
@@ -214,7 +213,6 @@ class MainWindow(QMainWindow):
         self.grips[1].move(rect.right() - self.gripSize, 0)
         self.grips[2].move(rect.right() - self.gripSize, rect.bottom() - self.gripSize)
         self.grips[3].move(0, rect.bottom() - self.gripSize)
-        self.centralWidget().upperBox.updateGeometry()
         self.centralWidget().upperBox.line.resizeWidgets()
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
@@ -262,16 +260,16 @@ class MainWindow(QMainWindow):
 class MainWidget(QWidget):
     """A container for child widgets responsible for general layout."""
 
-    def __init__(self, window: QMainWindow, control, screens: list) -> None:
+    def __init__(self, control, window: QMainWindow, screens: list) -> None:
         super().__init__()
-        self.layout = QVBoxLayout()
-        self.window = window
         self.control = control
+        self.window = window
+        self.layout = QVBoxLayout()
         self.setLayout(self.layout)
-        self.layout.setContentsMargins(5, 5, 5, 5)
+        self.layout.setContentsMargins(0, 0, 0, 0)
         self.menus = MenuBar(self.window, self.control, screens)
         self.layout.addWidget(self.menus)
-        self.upperBox = UpperBox(self.control)
+        self.upperBox = UpperBox(self.control, self.window)
         self.layout.addWidget(self.upperBox)
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
@@ -402,24 +400,34 @@ class Icon(QLabel):
         self.setScaledContents(True)
         self.menu = QMenu()
         self.menu.setStyleSheet(menuStyle)
-        self.menu.addAction("Open file", self.openFile)
+        self.menu.addAction("Add folder", self.addFolder)
         self.menu.addAction("Manage watched folders", self.manageFolders)
         self.menu.addSeparator()
         self.menu.addAction("Settings", self.showSettings)
         self.menu.addSeparator()
         self.menu.addAction("Help", self.showHelp)
         self.foldersDialog = None
+        self.closeOnly = False
+
+    def enterEvent(self, event: Any) -> None:
+        if self.menu.isVisible():
+            self.closeOnly = True
+        else:
+            self.closeOnly = False
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        position = self.pos()
-        position.setY(position.y() + 30)
-        position.setX(position.x() + 10)
-        self.menu.move(self.mapToGlobal(position))
-        self.menu.show()
+        if not self.closeOnly:
+            position = self.pos()
+            position.setY(position.y() + 30)
+            position.setX(position.x() + 10)
+            self.menu.move(self.mapToGlobal(position))
+            self.menu.show()
+            self.closeOnly = True
 
-    def openFile(self) -> None:
-        # TODO
-        pass
+    def addFolder(self) -> None:
+        if self.foldersDialog is None:
+            self.foldersDialog = FoldersDialog(self.window, self, self.control)
+        self.foldersDialog.addFolder()
 
     def manageFolders(self) -> None:
         if self.foldersDialog is None:
@@ -456,9 +464,9 @@ class MenuBar(QWidget):
         self.layout.addWidget(self.logo)
         self.title = QLabel("My player")
         self.title.setAlignment(Qt.AlignRight)
-        self.title.setStyleSheet("color:#afafaf;"
-                                 "font-size:18pt")
+        self.title.setStyleSheet("font-size:18pt")
         self.layout.addWidget(self.title)
+        self.layout.setSpacing(0)
         self._createButtons()
         self.start = QPoint(0, 0)
         self.mousePressed = False
@@ -470,7 +478,7 @@ class MenuBar(QWidget):
 
     def _createButtons(self) -> None:
         self.buttonsLayout = QHBoxLayout()
-        buttonSize = 30
+        buttonSize = 35
 
         self.closeButton = QPushButton(chr(0x1f5d9))
         self.closeButton.clicked.connect(self.window.close)
@@ -548,10 +556,14 @@ class MenuBar(QWidget):
 
 class Line(QWidget):
     """A separator that can be used to resize adjacent widgets while respecting
-    their maximum/minimum size properties."""
+    the maximum/minimum size properties of the right-hand side widget. Sets
+    the maximum width for the left-hand side widget while resizing in order
+    to prevent it being wrapped under the right widget."""
 
-    def __init__(self, orientation: [QFrame.VLine, QFrame.HLine], leftWidget: QWidget, rightWidget: QWidget):
+    def __init__(self, window: QMainWindow, orientation: [QFrame.VLine, QFrame.HLine],
+                 leftWidget: QWidget, rightWidget: QWidget) -> None:
         super().__init__()
+        self.window = window
         self.line = QFrame()
         self.line.setFrameShape(orientation)
         self.setLayout(QVBoxLayout())
@@ -567,20 +579,21 @@ class Line(QWidget):
         self.setCursor(Qt.ArrowCursor)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        # TODO implement capability for vertical movement
         self.resizeWidgets(event.pos().x())
 
     def resizeWidgets(self, move: int = None) -> None:
+        """Sets geometry of self, and both adjacent widgets."""
         if move is None:
-            move = self.rightWidget.geometry().width()
+            move = self.rightWidget.geometry().width() + 5
         geo = self.geometry()
-        if self.leftWidget.minimumWidth() < self.leftWidget.width() + move < self.leftWidget.maximumWidth() and \
-                self.rightWidget.minimumWidth() < self.rightWidget.width() - move < self.rightWidget.maximumWidth():
+        if self.rightWidget.minimumWidth() < self.rightWidget.width() - move < self.rightWidget.maximumWidth():
             self.setGeometry(geo.x() + move, geo.y(), geo.width(), geo.height())
+
             leftGeo = self.leftWidget.geometry()
-            self.leftWidget.setGeometry(leftGeo.x(), leftGeo.y(), leftGeo.width() + move, leftGeo.height())
+            self.leftWidget.setGeometry(QRect(leftGeo.x(), leftGeo.y(), leftGeo.width() + move, leftGeo.height()))
             rightGeo = self.rightWidget.geometry()
             self.rightWidget.preferredWidth = rightGeo.width() - move
+            self.leftWidget.setMaximumWidth(self.window.width() - self.rightWidget.preferredWidth - 15)
             self.rightWidget.setGeometry(rightGeo.x() + move, rightGeo.y(), rightGeo.width() - move, rightGeo.height())
 
 
@@ -588,18 +601,18 @@ class UpperBox(QWidget):
     """A container for the layouts providing access to artists and albums and the layout providing
     access to songs for the selected artist/album/playlist."""
 
-    def __init__(self, control) -> None:
+    def __init__(self, control, window) -> None:
         super().__init__()
-        self.layout = QHBoxLayout()
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.setLayout(self.layout)
         self.control = control
+        self.window = window
+        self.layout = QHBoxLayout()
+        self.layout.setContentsMargins(0, 0, 5, 0)
+        self.setLayout(self.layout)
         self.songList = SongList(self.control, self)
         self.mainBox = MainBox(self.control, self)
-        self.line = Line(QFrame.VLine, self.mainBox, self.songList)
+        self.line = Line(self.window, QFrame.VLine, self.mainBox, self.songList)
         self.layout.addWidget(self.mainBox, stretch=1)
         self.layout.addWidget(self.line)
-        self.layout.addSpacing(10)
         self.layout.addWidget(self.songList)
 
 
@@ -658,11 +671,11 @@ class FlowLayout(QLayout):
         y = rect.y()
         lineHeight = 0
         for item in self.items:
-            spaceX = self.spacing + item.widget().style().layoutSpacing(QSizePolicy.PushButton,
-                                                                        QSizePolicy.PushButton,
+            spaceX = self.spacing + item.widget().style().layoutSpacing(QSizePolicy.DefaultType,
+                                                                        QSizePolicy.DefaultType,
                                                                         Qt.Horizontal)
-            spaceY = self.spacing + item.widget().style().layoutSpacing(QSizePolicy.PushButton,
-                                                                        QSizePolicy.PushButton,
+            spaceY = self.spacing + item.widget().style().layoutSpacing(QSizePolicy.DefaultType,
+                                                                        QSizePolicy.DefaultType,
                                                                         Qt.Vertical)
             nextX = x + item.sizeHint().width() + spaceX
             if nextX - spaceX > rect.right() and lineHeight > 0:
@@ -1100,6 +1113,7 @@ class SongWidget(QWidget):
             menu.addAction("Add to now playing", self.addToNowPlaying)
         else:
             menu.addAction("Add to end of the queue", self.addToNowPlaying)
+            menu.addAction("Remove from now playing", self.removeFromNowPlaying)
         menu.addAction("Play next", self.addAfterCurrent)
         if self.playlist is None:
             subMenu = QMenu("Add to playlist")
@@ -1120,6 +1134,9 @@ class SongWidget(QWidget):
 
     def addToNowPlaying(self) -> None:
         self.control.playSongWidget(self.song)
+
+    def removeFromNowPlaying(self) -> None:
+        self.control.removeFromNowPlaying(self)
 
     def addAfterCurrent(self) -> None:
         self.control.playSongWidget(self.song, True)
@@ -1146,7 +1163,6 @@ class SongList(QWidget):
 
     def __init__(self, control, parentWidget: QWidget) -> None:
         super().__init__()
-        # TODO song ordering
         self.setMaximumWidth(500)
         self.setMinimumWidth(300)
         self.parentWidget = parentWidget
@@ -1155,6 +1171,27 @@ class SongList(QWidget):
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0, 0, 2, 0)
         self.setLayout(self.layout)
+
+        self.buttonOrderBy = QPushButton(text="Year")
+        self.buttonOrderBy.clicked.connect(self.orderBy)
+        self.buttonOrderBy.setFixedWidth(60)
+        self.buttonOrderReverse = QPushButton(text=chr(0x25b2))
+        self.buttonOrderReverse.clicked.connect(self.reverseOrder)
+        self.buttons = QWidget()
+        self.buttons.setStyleSheet("QPushButton {"
+                                   "    background-color:#141414;"
+                                   "    color:#afafaf;"
+                                   "    border-style: none;"
+                                   "    font-size: 17px;"
+                                   "    font-weight: bold;"
+                                   "}")
+        self.buttons.setLayout(QHBoxLayout())
+        self.buttons.layout().setAlignment(Qt.AlignLeft)
+        self.buttons.layout().setContentsMargins(5, 0, 5, 0)
+        self.buttons.layout().addWidget(self.buttonOrderBy)
+        self.buttons.layout().addWidget(self.buttonOrderReverse)
+        self.layout.addWidget(self.buttons)
+
         self.scrollArea = QScrollArea()
         self.scrollBar = QScrollBar(Qt.Vertical, self.scrollArea)
         self.scrollBar.setStyleSheet(scrollBarStyle)
@@ -1167,6 +1204,8 @@ class SongList(QWidget):
         self.songArea = QWidget()
         self.scrollArea.setWidget(self.songArea)
         self.songLayout = QVBoxLayout()
+        self.songLayout.setSpacing(0)
+        self.songLayout.setAlignment(Qt.AlignTop)
         self.songArea.setLayout(self.songLayout)
         self.garbageProtector = {}  # Necessary for preventing C++ from deleting the objects
         self.nowPlayingSong = None
@@ -1175,8 +1214,26 @@ class SongList(QWidget):
         for n in range(1, 8):
             self.activePixmaps.append(QPixmap(f"{location}active{n}.png"))
 
+    def orderBy(self):
+        # TODO change ordering by type
+        text = self.buttonOrderBy.text()
+        if text == "Album":
+            self.buttonOrderBy.setText("Year")
+        elif text == "Year":
+            self.buttonOrderBy.setText("Album")
+        self.control.getSongs(None, None)
+
+    def reverseOrder(self):
+        text = self.buttonOrderReverse.text()
+        if text == chr(0x25b2):
+            self.buttonOrderReverse.setText(chr(0x25bc))
+        elif text == chr(0x25bc):
+            self.buttonOrderReverse.setText(chr(0x25b2))
+        self.control.getSongs(None, None)
+
     def updateSongList(self, songList: list, library, currentSong: str, isPlaylist: str) -> None:
         """Clear and recreate the contents when user changes selection."""
+        # TODO add context menus for album titles
         style = ("color:#afafaf;"
                  "font-size: 13px;")
         currentAlbum = None
@@ -1184,13 +1241,13 @@ class SongList(QWidget):
         clearLayout(self.songLayout)
         self.garbageProtector = {}
         for song in songList:
-            albumName = library[song][ALBUM]
+            albumName = f"{library[song][ALBUM]} ({library[song][YEAR]})"
             if albumName != currentAlbum:
                 albumLabel = QLabel(albumName)
                 albumLabel.setWordWrap(True)
                 albumLabel.setStyleSheet(style + "font-weight: bold;font-size: 18px;")
                 self.songLayout.addWidget(albumLabel)
-                currentAlbum = albumName
+                currentAlbum = f"{library[song][ALBUM]} ({library[song][YEAR]})"
             songName = QLabel(f"{library[song][TRACK]} - {library[song][NAME]}")
             songName.setAlignment(Qt.AlignLeft)
             songName.setStyleSheet(style)
@@ -1207,7 +1264,7 @@ class SongList(QWidget):
                                     "color:#afafaf;"
                                     "border-style: none;")
             playIcon = QLabel()
-            playIcon.setFixedSize(12, 12)
+            playIcon.setFixedSize(10, 10)
             playIcon.setScaledContents(True)
             playIcon.setAlignment(Qt.AlignRight)
             if song == currentSong and self.control.player.state() > 0:
