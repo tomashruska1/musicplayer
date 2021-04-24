@@ -122,7 +122,13 @@ class Control:
     def getSongs(self, isType: str, name: str) -> None:
         """Retrieves the songs for a given artist, album or playlist based on type
         and passes the resulting list to the SongList class."""
-        listForType = self.types[isType](name)
+        if isType is None:
+            isType = self.displayedType
+        if name is None:
+            name = self.displayedName
+        orderBy = self.songList.buttonOrderBy.text()
+        reverse = True if self.songList.buttonOrderReverse.text() == chr(0x25bc) else False
+        listForType = self.types[isType](name, orderBy, reverse)
         playlist = None
         if isType == "playlist":
             playlist = name
@@ -167,6 +173,23 @@ class Control:
         self.mainBox.setNowPlayingArea(self.library)
         self.mainBox.updateActiveSong(self.playlist.currentIndex())
         self.playing = True
+
+    def removeFromNowPlaying(self, widget) -> None:
+        if self.playlist.mediaCount() > 1:
+            for row in range(self.mainBox.nowPlayingLayout.rowCount()):
+                for column in range(self.mainBox.nowPlayingLayout.columnCount()):
+                    if self.mainBox.nowPlayingLayout.itemAtPosition(row, column).widget() is widget:
+                        self.playlist.removeMedia(row - 1)
+                        break
+                else:
+                    continue
+                break
+        else:
+            self.stopButtonClick()
+            self.playlist.clear()
+        self.mainBox.setNowPlayingArea(self.library)
+        if self.playing:
+            self.mainBox.updateActiveSong(self.playlist.currentIndex())
 
     def playMediaWidget(self, isType: str, target: str, startOver: bool, afterCurrent: bool) -> None:
         """Called from MediaWidget - plays all songs for MediaWidget's type and name."""
