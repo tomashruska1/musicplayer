@@ -3,6 +3,7 @@ import gzip
 import os
 import re
 import struct
+from typing import Any
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 
@@ -15,7 +16,7 @@ class Library:
     ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
 
     MAGIC = b"\x01\xff"
-    format_spec = "%Y%m%d%H%M%S"
+    TIME_FORMAT = "%Y%m%d%H%M%S"
 
     def __init__(self) -> None:
         self._folders = []
@@ -47,6 +48,7 @@ class Library:
         self.tempFiles.clear()
         if self.changed:
             self._save()
+            self.timestamp = datetime.datetime.now()
             self.changed = False
 
     def _load(self) -> bool:
@@ -108,7 +110,7 @@ class Library:
                             if os.path.exists(song):
                                 self._playlists[playlist].append(song)
             self._files = temp
-            self.timestamp = datetime.datetime.strptime(timestamp, Library.format_spec)
+            self.timestamp = datetime.datetime.strptime(timestamp, Library.TIME_FORMAT)
             return True
         except Exception:
             return False
@@ -120,7 +122,7 @@ class Library:
         with gzip.open(self.libraryFile, "wb") as fh:
             fh.write(self.MAGIC)
             fh.write(struct.pack("<h", len(self._folders)))
-            fh.write(struct.pack("<14s", datetime.datetime.now().strftime(Library.format_spec).encode()))
+            fh.write(struct.pack("<14s", datetime.datetime.now().strftime(Library.TIME_FORMAT).encode()))
             for folder in self._folders:
                 toBeWritten = struct.pack(f"<h{len(folder.encode())}s", len(folder.encode()), folder.encode())
                 fh.write(toBeWritten)
@@ -245,7 +247,7 @@ class Library:
                 self._playlists[playlist].remove(song)
                 self.changed = True
 
-    def getSongsForArtist(self, artist: str, orderBy: str, newFirst: bool = False) -> list:
+    def getSongsForArtist(self, artist: str, orderBy: str = None, reverse: bool = False) -> list:
         """Returns a list of all song paths for a given artist with optional sorting new first."""
         songs = []
         for song in self._files:
@@ -254,23 +256,38 @@ class Library:
                     songs.append(song)
         songs.sort(key=lambda x: (self._files[x][self.ALBUM], self._files[x][self.DISC],
                                   self._files[x][self.TRACK]))
-        if orderBy == "Year":
-            songs.sort(key=lambda x: self._files[x][self.YEAR], reverse=newFirst)
+        if orderBy == "Year" or orderBy is None:
+            songs.sort(key=lambda x: self._files[x][self.YEAR], reverse=reverse)
         elif orderBy == "Album":
-            songs.sort(key=lambda x: self._files[x][self.ALBUM], reverse=newFirst)
+            songs.sort(key=lambda x: self._files[x][self.ALBUM], reverse=reverse)
         return songs
 
-    def getSongsForAlbum(self, album: str, orderBy: str, newFirst: bool = False) -> list:
-        # TODO meaningful ordering for albums
+    def getSongsForAlbum(self, album: str, ignored: Any = None, reverse: bool = False) -> list:
         songs = []
         for song in self._files:
             if os.path.exists(song):
                 if self._files[song][self.ALBUM].lower() == album.lower():
                     songs.append(song)
-        return songs
+        return sorted(songs, reverse=reverse)
 
-    def getSongsForPlaylist(self, playlist: str, orderBy: str, newFirst: bool = False) -> list:
-        # TODO meaningful ordering for playlists
-        if playlist in self._playlists:
-            return self._playlists[playlist]
-        return []
+    def getSongsForPlaylist(self, playlist: str, orderBy: str = None, reverse: bool = False) -> list:
+        if playlist not in self._playlists:
+            return []
+        elif orderBy == "Year":
+            return sorted(self._playlists[playlist],
+                          key=lambda x: (self._files[x][self.YEAR],
+                                         self._files[x][self.ALBUM],
+                                         self._files[x][self.DISC]),
+                          reverse=reverse)
+        elif orderBy == "Album":
+            return sorted(self._playlists[playlist],
+                          key=lambda x: (self._files[x][self.ALBUM], self._files[x][self.DISC]),
+                          reverse=reverse)
+        elif orderBy == "Artist":
+            return sorted(self._playlists[playlist],
+                          key=lambda x: (self._files[x][self.ARTIST],
+                                         self._files[x][self.YEAR],
+                                         self._files[x][self.ALBUM],
+                                         self._files[x][self.DISC]),
+                          reverse=reverse)
+        return self._playlists[playlist]
