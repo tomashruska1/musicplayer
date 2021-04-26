@@ -1,5 +1,6 @@
 import gzip
 import struct
+from time import perf_counter
 from PyQt5.QtCore import QUrl, QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QAudio, QMediaContent
 from musicplayer import gui, library
@@ -95,6 +96,7 @@ class Control:
             self.mainWindow.centralWidget().upperBox.line.resizeWidgets(songListGeometry.width() - self.songListWidth)
 
     def updateLibrary(self) -> None:
+        start = perf_counter()
         self.library.update()
         self.mainBox.updateView(self.library)
 
@@ -139,7 +141,8 @@ class Control:
         self.songList.updateSongList(listForType,
                                      self.library.library,
                                      self.currentSong,
-                                     playlist)
+                                     playlist,
+                                     isType)
         self.displayedType = isType
         self.displayedName = name
 
@@ -261,7 +264,7 @@ class Control:
         self.library.deleteFolder(folder)
         self.mainBox.updateView(self.library)
         if self.currentSong not in self.library.library:
-            self.songList.updateSongList([], [], "")
+            self.songList.updateSongList([], [], "", "")
             self.player.stop()
             self.playlist.clear()
             self.bottomBox.updateSongInfo("")
