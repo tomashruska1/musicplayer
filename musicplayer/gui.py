@@ -516,12 +516,17 @@ class MenuBar(QWidget):
             self.window.showNormal()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        self.start = self.mapToGlobal(event.pos())
-        self.mousePressed = True
+        if event.pos().y() < 5:
+            self.pressedForParent = True
+            self.window.mousePressEvent(event)
+        else:
+            self.start = self.mapToGlobal(event.pos())
+            self.mousePressed = True
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
+        if self.pressedForParent:
+            self.window.mouseReleaseEvent(event)
         self.mousePressed = self.pressedForParent = False
-        self.window.mouseReleaseEvent(event)
 
     def mouseDoubleClickEvent(self, event: QMouseEvent) -> None:
         if self.window.isMaximized():
@@ -1174,7 +1179,6 @@ class SongList(QWidget):
 
         self.buttonOrderBy = QPushButton(text="Year")
         self.buttonOrderBy.clicked.connect(self.orderBy)
-        self.buttonOrderBy.setFixedWidth(60)
         self.buttonOrderReverse = QPushButton(text=chr(0x25b2))
         self.buttonOrderReverse.clicked.connect(self.reverseOrder)
         self.buttons = QWidget()
@@ -1184,6 +1188,7 @@ class SongList(QWidget):
                                    "    border-style: none;"
                                    "    font-size: 17px;"
                                    "    font-weight: bold;"
+                                   "    text-align: left;"
                                    "}")
         self.buttons.setLayout(QHBoxLayout())
         self.buttons.layout().setAlignment(Qt.AlignLeft)
@@ -1209,19 +1214,44 @@ class SongList(QWidget):
         self.songArea.setLayout(self.songLayout)
         self.garbageProtector = {}  # Necessary for preventing C++ from deleting the objects
         self.nowPlayingSong = None
+        self.displayedType = None
         self.activePixmaps = []
         self.index = 0
         for n in range(1, 8):
             self.activePixmaps.append(QPixmap(f"{location}active{n}.png"))
 
-    def orderBy(self):
-        # TODO change ordering by type
+    def orderBy(self) -> None:
         text = self.buttonOrderBy.text()
-        if text == "Album":
-            self.buttonOrderBy.setText("Year")
-        elif text == "Year":
-            self.buttonOrderBy.setText("Album")
+
+        if self.displayedType == "artist":
+            if text == "Album":
+                self.buttonOrderBy.setText("Year")
+            elif text == "Year":
+                self.buttonOrderBy.setText("Album")
+
+        elif self.displayedType == "playlist":
+            if text == "Artist":
+                self.buttonOrderBy.setText("Album")
+            elif text == "Album":
+                self.buttonOrderBy.setText("Year")
+            elif text == "Year":
+                self.buttonOrderBy.setText("Artist")
+
         self.control.getSongs(None, None)
+
+    def validateSortingButtonText(self) -> None:
+        text = self.buttonOrderBy.text()
+
+        if self.displayedType == "album":
+            self.buttonOrderBy.setText("Track number")
+
+        elif self.displayedType == "artist":
+            if text not in ["Album", "Year"]:
+                self.buttonOrderBy.setText("Year")
+
+        elif self.displayedType == "playlist":
+            if text not in ["Artist", "Album", "Year"]:
+                self.buttonOrderBy.setText("Artist")
 
     def reverseOrder(self):
         text = self.buttonOrderReverse.text()
@@ -1231,11 +1261,12 @@ class SongList(QWidget):
             self.buttonOrderReverse.setText(chr(0x25b2))
         self.control.getSongs(None, None)
 
-    def updateSongList(self, songList: list, library, currentSong: str, isPlaylist: str) -> None:
+    def updateSongList(self, songList: list, library, currentSong: str, isPlaylist: str, isType: str) -> None:
         """Clear and recreate the contents when user changes selection."""
         # TODO add context menus for album titles
         style = ("color:#afafaf;"
                  "font-size: 13px;")
+        self.displayedType = isType
         currentAlbum = None
         nowPlayingIncluded = False
         clearLayout(self.songLayout)
@@ -1280,6 +1311,7 @@ class SongList(QWidget):
             self.songLayout.addWidget(songLabel)
         if not nowPlayingIncluded:
             self.nowPlayingSong = None
+        self.validateSortingButtonText()
 
     def updateActiveSong(self, currentSong: str) -> None:
         """Shows a small image on the currently playing song for visual feedback."""
