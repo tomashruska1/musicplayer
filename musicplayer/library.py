@@ -149,6 +149,8 @@ class Library:
         looking for files that have last-changed timestamp higher than the library
         timestamp -> these were changed after the library was last loaded."""
         keyList = ["artist", "album", "date", "title", "tracknumber", "discnumber"]
+        if not os.path.exists(folder):
+            return
         for dirEntry in os.scandir(folder):
             if dirEntry.name.lower().endswith(".mp3"):
                 self.tempFiles.add(dirEntry.path)
