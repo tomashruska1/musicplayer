@@ -1,9 +1,11 @@
 import gzip
 import struct
-from time import perf_counter
 from PyQt5.QtCore import QUrl, QTimer
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QAudio, QMediaContent
-from musicplayer import gui, library
+from musicplayer import library
+from musicplayer.gui import bottom
+from musicplayer.gui import window
+
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
 
@@ -19,7 +21,7 @@ class Control:
         self.player.setAudioRole(QAudio.MusicRole)
         self.playlist = QMediaPlaylist()
         self.player.setPlaylist(self.playlist)
-        self.mainWindow = gui.MainWindow(self, screens)
+        self.mainWindow = window.MainWindow(self, screens)
         self.mainBox = self.mainWindow.centralWidget().upperBox.mainBox
         self.songList = self.mainWindow.centralWidget().upperBox.songList
         self.bottomBox = self.mainWindow.centralWidget().bottomBox
@@ -96,7 +98,6 @@ class Control:
             self.mainWindow.centralWidget().upperBox.line.resizeWidgets(songListGeometry.width() - self.songListWidth)
 
     def updateLibrary(self) -> None:
-        start = perf_counter()
         self.library.update()
         self.mainBox.updateView(self.library)
 
@@ -163,7 +164,8 @@ class Control:
         if index > 0:
             self.playlist.setCurrentIndex(index)
         self.playing = True
-        self.bottomBox.playButton.updatePictures(gui.pausePixmap, gui.pauseHoverPixmap, False)
+        self.bottomBox.playButton.updatePictures(bottom.pausePixmap,
+                                                 bottom.pauseHoverPixmap, False)
         self.mainBox.setNowPlayingArea(self.library)
         self.mainBox.updateActiveSong(self.playlist.currentIndex())
 
@@ -209,7 +211,8 @@ class Control:
         if startOver:
             self.player.play()
             self.playing = True
-            self.bottomBox.playButton.updatePictures(gui.pausePixmap, gui.pauseHoverPixmap, False)
+            self.bottomBox.playButton.updatePictures(bottom.pausePixmap,
+                                                     bottom.pauseHoverPixmap, False)
         self.mainBox.setNowPlayingArea(self.library)
         self.mainBox.updateActiveSong(self.playlist.currentIndex())
 
