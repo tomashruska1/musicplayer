@@ -7,6 +7,7 @@ from PyQt5.QtWidgets import (QFrame, QWidget, QHBoxLayout, QLabel, QMainWindow,
                              QPushButton, QMenu, QVBoxLayout, QSizeGrip,
                              QScrollArea, QScrollBar, QFileDialog, QDialog)
 
+from musicplayer.gui import ClickLabel
 from musicplayer.gui.mainArea import UpperBox
 from musicplayer.gui.bottom import BottomBox
 
@@ -296,16 +297,15 @@ class FoldersDialog(QDialog):
         self.fileDialog.setFileMode(QFileDialog.Directory)
         self.fileDialog.setWindowModality(Qt.WindowModal)
         self.fileDialog.Options(QFileDialog.ShowDirsOnly)
-        if hasattr(self.control, "library"):
-            self.fileDialog.fileSelected.connect(self.control.addWatchedFolder)
-            self.fileDialog.fileSelected.connect(self.updateFolders)
-            self.removeSignal.connect(self.control.removeWatchedFolder)
-            for folder in self.control.library.folders:
-                field = ClickLabel()
-                field.setText(folder)
-                field.setFixedHeight(15)
-                field.click.connect(self.highlightLabel)
-                self.foldersLayout.addWidget(field)
+        self.fileDialog.fileSelected.connect(self.control.addWatchedFolder)
+        self.fileDialog.fileSelected.connect(self.updateFolders)
+        self.removeSignal.connect(self.control.removeWatchedFolder)
+        for folder in self.control.library.folders:
+            field = ClickLabel()
+            field.setText(folder)
+            field.setFixedHeight(15)
+            field.click.connect(self.highlightLabel)
+            self.foldersLayout.addWidget(field)
 
     def highlightLabel(self, label: QLabel) -> None:
         if self.highlightedLabel is not None:
@@ -507,11 +507,3 @@ class MenuBar(QWidget):
                                                 self.window.height())
                         self.start = self.end
 
-
-class ClickLabel(QLabel):
-    """A class that implements the ability to accepts mouse clicks on a QLabel."""
-
-    click = pyqtSignal(QLabel)
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        self.click.emit(self)
