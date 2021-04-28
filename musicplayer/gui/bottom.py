@@ -1,9 +1,10 @@
 from typing import Any
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QMouseEvent, QPixmap
+from PyQt5.QtGui import QMouseEvent, QPixmap, QKeyEvent
 from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout, QSlider
 
+from musicplayer.gui import ClickLabel
 from musicplayer.gui.mainArea import SongList
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
@@ -68,7 +69,6 @@ class MediaButton(QWidget):
     def __init__(self, size: tuple, picture: str, hoverPicture: str) -> None:
         super().__init__()
         self.setFixedSize(*size)
-        self.setMouseTracking(True)
         self.layout = QVBoxLayout()
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.setLayout(self.layout)
@@ -100,22 +100,23 @@ class JumpSlider(QSlider):
     """A class that provides the ability to click anywhere on the slider's groove
     to move the handle (native Qt5 class does not support this behaviour)."""
 
-    def __init__(self, orientation: Qt.Orientations) -> None:
-        super().__init__(orientation)
-        self.pressed = False
-
     def mousePressEvent(self, event: QMouseEvent) -> None:
-        self.pressed = True
         self.mouseMoveEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        if self.pressed:
-            newPosition = int(event.pos().x() / self.geometry().width() * self.maximum())
+        newPosition = int(event.pos().x() / self.geometry().width() * self.maximum())
+        self.setSliderPosition(newPosition)
+        self.sliderMoved.emit(newPosition)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key_Right:
+            newPosition = self.sliderPosition() + (self.maximum() // 100)
             self.setSliderPosition(newPosition)
             self.sliderMoved.emit(newPosition)
-
-    def mouseReleaseEvent(self, event: Any) -> None:
-        self.pressed = False
+        elif event.key() == Qt.Key_Left:
+            newPosition = self.sliderPosition() - (self.maximum() // 100)
+            self.setSliderPosition(newPosition)
+            self.sliderMoved.emit(newPosition)
 
 
 class BottomBox(QWidget):
@@ -148,7 +149,6 @@ class BottomBox(QWidget):
         self.currentSongTime.setAlignment(Qt.AlignLeft)
         self.songProgress = JumpSlider(Qt.Horizontal)
         self.songProgress.setMinimum(0)
-        self.songProgress.setMaximum(1000)
         self.songProgress.setStyleSheet(sliderStyle)
         self.songTime = QLabel("00:00")
         self.songTime.setStyleSheet(style)
@@ -208,7 +208,7 @@ class BottomBox(QWidget):
 
         self.volumeControl = JumpSlider(Qt.Horizontal)
         self.volumeControl.setStyleSheet(sliderStyle)
-        self.volumeControl.setMinimum(0)
+        self.volumeControl.setMinimum(5)
         self.volumeControl.setMaximum(100)
         self.volumeControl.setFixedWidth(100)
         self.buttonLayout.addWidget(self.volumeControl)
@@ -279,12 +279,3 @@ class BottomBox(QWidget):
     def showMute(self) -> None:
         """Updates the volume slider icon to a "mute" picture."""
         self.muteButton.setPixmap(QPixmap(speakerMutePixmap))
-
-
-class ClickLabel(QLabel):
-    """A class that implements the ability to accepts mouse clicks on a QLabel."""
-
-    click = pyqtSignal(QLabel)
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        self.click.emit(self)
