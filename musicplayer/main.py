@@ -1,10 +1,10 @@
 import gzip
 import struct
-from PyQt5.QtCore import QUrl, QTimer
+
+from PyQt5.QtCore import QUrl
 from PyQt5.QtMultimedia import QMediaPlayer, QMediaPlaylist, QAudio, QMediaContent
 from musicplayer import library
-from musicplayer.gui import bottom
-from musicplayer.gui import window
+from musicplayer.gui import *
 
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
@@ -21,7 +21,7 @@ class Control:
         self.player.setAudioRole(QAudio.MusicRole)
         self.playlist = QMediaPlaylist()
         self.player.setPlaylist(self.playlist)
-        self.mainWindow = window.MainWindow(self, screens)
+        self.mainWindow = MainWindow(self, screens)
         self.mainBox = self.mainWindow.centralWidget().upperBox.mainBox
         self.songList = self.mainWindow.centralWidget().upperBox.songList
         self.bottomBox = self.mainWindow.centralWidget().bottomBox
