@@ -8,8 +8,8 @@ from PyQt5.QtWidgets import (QFrame, QWidget, QHBoxLayout, QLabel, QMainWindow,
                              QScrollArea, QScrollBar, QFileDialog, QDialog)
 
 from musicplayer.gui import ClickLabel
-from musicplayer.gui.mainArea import UpperBox
-from musicplayer.gui.bottom import BottomBox
+from musicplayer.gui.mainarea import UpperBox
+from musicplayer.gui.bottom import MediaControlArea
 
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
@@ -224,8 +224,8 @@ class MainWidget(QWidget):
         line = QFrame()
         line.setFrameShape(QFrame.HLine)
         self.layout.addWidget(line)
-        self.bottomBox = BottomBox(self.parent, self.upperBox.songList)
-        self.layout.addWidget(self.bottomBox)
+        self.mediaControlArea = MediaControlArea(self.parent, self.upperBox.songList)
+        self.layout.addWidget(self.mediaControlArea)
 
 
 class FoldersDialog(QDialog):
