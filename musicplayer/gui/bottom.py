@@ -1,11 +1,12 @@
 from typing import Any
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QMouseEvent, QPixmap, QKeyEvent
-from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout, QSlider
+from PyQt5.QtGui import QPixmap
+from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QVBoxLayout
 
 from musicplayer.gui import ClickLabel
-from musicplayer.gui.mainArea import SongList
+from musicplayer.gui.mainarea import SongList
+from musicplayer.gui.misc import JumpSlider
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
 
@@ -96,30 +97,7 @@ class MediaButton(QWidget):
             self.enterEvent(moveMouse)
 
 
-class JumpSlider(QSlider):
-    """A class that provides the ability to click anywhere on the slider's groove
-    to move the handle (native Qt5 class does not support this behaviour)."""
-
-    def mousePressEvent(self, event: QMouseEvent) -> None:
-        self.mouseMoveEvent(event)
-
-    def mouseMoveEvent(self, event: QMouseEvent) -> None:
-        newPosition = int(event.pos().x() / self.geometry().width() * self.maximum())
-        self.setSliderPosition(newPosition)
-        self.sliderMoved.emit(newPosition)
-
-    def keyPressEvent(self, event: QKeyEvent) -> None:
-        if event.key() == Qt.Key_Right:
-            newPosition = self.sliderPosition() + (self.maximum() // 100)
-            self.setSliderPosition(newPosition)
-            self.sliderMoved.emit(newPosition)
-        elif event.key() == Qt.Key_Left:
-            newPosition = self.sliderPosition() - (self.maximum() // 100)
-            self.setSliderPosition(newPosition)
-            self.sliderMoved.emit(newPosition)
-
-
-class BottomBox(QWidget):
+class MediaControlArea(QWidget):
     """A class that provides media buttons such as play/pause/stop, a slider (JumpSlider)
     that represents the current position of the song as well as showing information
     about the currently playing song - title, artist, length."""
