@@ -1,8 +1,57 @@
+from typing import Type
 from PyQt5.QtCore import QSize, Qt, QPoint, QRect, pyqtSignal, QEvent
-from PyQt5.QtGui import (QMouseEvent, QContextMenuEvent)
+from PyQt5.QtGui import (QMouseEvent, QContextMenuEvent, QKeyEvent)
 from PyQt5.QtWidgets import (QFrame, QWidget, QLabel, QMainWindow,
                              QMenu, QVBoxLayout, QLayout, QSizePolicy,
-                             QDialog, QLayoutItem, QLineEdit)
+                             QDialog, QLayoutItem, QLineEdit, QScrollArea,
+                             QScrollBar, QSlider)
+
+scrollBarStyle = ("QScrollBar:vertical {"
+                  "    background-color: #141414;"
+                  "    width: 7px;"
+                  "}"
+                  "QScrollBar::handle:vertical {"
+                  "    background-color: #303030;"
+                  "    min-height: 5px;"
+                  "    border-radius: 4px;"
+                  "}"
+                  "QScrollBar::handle:hover {"
+                  "    background-color: #454545;"
+                  "    width: 25px;"
+                  "}"
+                  "QScrollBar::add-line:vertical {"
+                  "    background-color: #141414;"
+                  "    height: 10px;"
+                  "    width: 7px;"
+                  "    subcontrol-position: bottom;"
+                  "    subcontrol-origin: margin;"
+                  "    margin: 3px 0px 3px 0px;"
+                  "}"
+                  "QScrollBar::sub-line:vertical {"
+                  "    background-color: #141414;"
+                  "    height: 10px;"
+                  "    width: 7px;"
+                  "    subcontrol-position: top;"
+                  "    subcontrol-origin: margin;"
+                  "    margin: 3px 0px 3px 0px;"
+                  "}"
+                  "QScrollBar::add-page:vertical,"
+                  "QScrollBar::sub-page:vertical {"
+                  "    background-color: none;"
+                  "}"
+                  "QScrollBar::sub-line:vertical:hover,"
+                  "QScrollBar::sub-line:vertical:on {"
+                  "    subcontrol-position: top;"
+                  "    subcontrol-origin: margin;"
+                  "}"
+                  "QScrollBar::add-line:vertical:hover,"
+                  "QScrollBar::add-line:vertical:on {"
+                  "    subcontrol-position: bottom;"
+                  "    subcontrol-origin: margin;"
+                  "}"
+                  "QWidget {"
+                  "    background-color: #141414"
+                  "}")
 
 menuStyle = ("QMenu {"
              "    background-color: #202020;"
@@ -168,6 +217,19 @@ class SongWidget(QWidget):
         self.control.removeFromPlaylist(self.playlist, self.song)
 
 
+class MainScrollArea(QScrollArea):
+    """A QScrollArea subclass that serves as a template for each of the scroll areas.
+    Specifically artist, album, playlist and now playing areas, and the right-hand side panel.
+    Requires a QLayout sub-class that will be instantiated and provide the layout."""
+
+    def __init__(self, layoutType: Type[QLayout]) -> None:
+        super().__init__()
+        self.setWidget(QWidget())
+        self.widget().setLayout(layoutType())
+        self.setVerticalScrollBar(QScrollBar())
+        self.setStyleSheet(scrollBarStyle)
+
+
 class Line(QWidget):
     """A separator that can be used to resize adjacent widgets while respecting
     the maximum/minimum size properties of the right-hand side widget. Sets
@@ -207,8 +269,7 @@ class Line(QWidget):
             self.leftWidget.setGeometry(QRect(leftGeo.x(), leftGeo.y(), leftGeo.width() + move, leftGeo.height()))
             rightGeo = self.rightWidget.geometry()
             self.rightWidget.preferredWidth = rightGeo.width() - move
-            self.leftWidget.setMaximumWidth(self.window.width() - self.rightWidget.preferredWidth - 15)
-            self.rightWidget.setGeometry(rightGeo.x() + move, rightGeo.y(), rightGeo.width() - move, rightGeo.height())
+            self.leftWidget.setFixedWidth(self.window.width() - self.rightWidget.preferredWidth - 15)
 
 
 class FlowLayout(QLayout):
@@ -344,3 +405,26 @@ class PlaylistDialog(QDialog):
     def accept(self) -> None:
         self.text = self.edit.text()
         super().accept()
+
+
+class JumpSlider(QSlider):
+    """A class that provides the ability to click anywhere on the slider's groove
+    to move the handle (native Qt5 class does not support this behaviour)."""
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:
+        self.mouseMoveEvent(event)
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:
+        newPosition = int(event.pos().x() / self.geometry().width() * self.maximum())
+        self.setSliderPosition(newPosition)
+        self.sliderMoved.emit(newPosition)
+
+    def keyPressEvent(self, event: QKeyEvent) -> None:
+        if event.key() == Qt.Key_Right:
+            newPosition = self.sliderPosition() + (self.maximum() // 100)
+            self.setSliderPosition(newPosition)
+            self.sliderMoved.emit(newPosition)
+        elif event.key() == Qt.Key_Left:
+            newPosition = self.sliderPosition() - (self.maximum() // 100)
+            self.setSliderPosition(newPosition)
+            self.sliderMoved.emit(newPosition)
