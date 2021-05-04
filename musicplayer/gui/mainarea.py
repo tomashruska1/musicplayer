@@ -1,57 +1,13 @@
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont, QPixmap, QResizeEvent
 from PyQt5.QtWidgets import (QFrame, QWidget, QHBoxLayout, QLabel, QPushButton,
-                             QVBoxLayout, QStackedWidget, QScrollArea, QScrollBar,
-                             QLayout, QSizePolicy, QGridLayout)
+                             QVBoxLayout, QStackedWidget, QLayout, QSizePolicy,
+                             QGridLayout)
 
-from musicplayer.gui import Line, FlowLayout, MediaWidget, SongWidget, clearLayout
+from musicplayer.gui import Line, FlowLayout, MediaWidget, SongWidget, clearLayout, MainScrollArea
 
 ARTIST, ALBUM, YEAR, NAME, TRACK, DISC, LENGTH = range(7)
 
-scrollBarStyle = ("QScrollBar:vertical {"
-                  "    background-color: #141414;"
-                  "    width: 7px;"
-                  "}"
-                  "QScrollBar::handle:vertical {"
-                  "    background-color: #303030;"
-                  "    min-height: 5px;"
-                  "    border-radius: 4px;"
-                  "}"
-                  "QScrollBar::handle:hover {"
-                  "    background-color: #454545;"
-                  "    width: 25px;"
-                  "}"
-                  "QScrollBar::add-line:vertical {"
-                  "    background-color: #141414;"
-                  "    height: 10px;"
-                  "    width: 7px;"
-                  "    subcontrol-position: bottom;"
-                  "    subcontrol-origin: margin;"
-                  "    margin: 3px 0px 3px 0px;"
-                  "}"
-                  "QScrollBar::sub-line:vertical {"
-                  "    background-color: #141414;"
-                  "    height: 10px;"
-                  "    width: 7px;"
-                  "    subcontrol-position: top;"
-                  "    subcontrol-origin: margin;"
-                  "    margin: 3px 0px 3px 0px;"
-                  "}"
-                  "QScrollBar::add-page:vertical,"
-                  "QScrollBar::sub-page:vertical {"
-                  "    background-color: none;"
-                  "}"
-                  "QScrollBar::sub-line:vertical:hover,"
-                  "QScrollBar::sub-line:vertical:on {"
-                  "    subcontrol-position: top;"
-                  "    subcontrol-origin: margin;"
-                  "}"
-                  "QScrollBar::add-line:vertical:hover,"
-                  "QScrollBar::add-line:vertical:on {"
-                  "    subcontrol-position: bottom;"
-                  "    subcontrol-origin: margin;"
-                  "}"
-                  )
 
 location = r"musicplayer\resources\\"
 
@@ -73,14 +29,14 @@ class UpperBox(QWidget):
         self.layout.setContentsMargins(0, 0, 5, 0)
         self.setLayout(self.layout)
         self.songList = SongList(self.control, self)
-        self.mainBox = MainBox(self.control, self)
-        self.line = Line(self.window, QFrame.VLine, self.mainBox, self.songList)
-        self.layout.addWidget(self.mainBox, stretch=1)
+        self.mainArea = MainArea(self.control, self)
+        self.line = Line(self.window, QFrame.VLine, self.mainArea, self.songList)
+        self.layout.addWidget(self.mainArea, stretch=1)
         self.layout.addWidget(self.line)
         self.layout.addWidget(self.songList)
 
 
-class MainBox(QWidget):
+class MainArea(QWidget):
     """A class responsible for organizing artist/album/playlist/now playing tabs
     and generally access to library contents."""
 
@@ -103,43 +59,20 @@ class MainBox(QWidget):
         self.mainArea = QStackedWidget()
         self.layout.addWidget(self.mainArea)
 
-        self.artistScrollArea = QScrollArea()
-        self.artistScrollBar = QScrollBar(Qt.Vertical, self.artistScrollArea)
-        self.artistArea = QWidget()
-        self.artistLayout = FlowLayout()
-        self.artistScrollBar.setStyleSheet(scrollBarStyle)
-        self.artistScrollArea.setVerticalScrollBar(self.artistScrollBar)
-        self.artistArea.setLayout(self.artistLayout)
-        self.artistScrollArea.setWidget(self.artistArea)
+        self.artistScrollArea = MainScrollArea(FlowLayout)
+        self.artistLayout = self.artistScrollArea.widget().layout()
         self.mainArea.insertWidget(0, self.artistScrollArea)
 
-        self.albumScrollArea = QScrollArea()
-        self.albumScrollBar = QScrollBar(Qt.Vertical, self.albumScrollArea)
-        self.albumScrollBar.setStyleSheet(scrollBarStyle)
-        self.albumScrollArea.setVerticalScrollBar(self.albumScrollBar)
-        self.albumArea = QWidget()
-        self.albumLayout = FlowLayout()
-        self.albumArea.setLayout(self.albumLayout)
-        self.albumScrollArea.setWidget(self.albumArea)
+        self.albumScrollArea = MainScrollArea(FlowLayout)
+        self.albumLayout = self.albumScrollArea.widget().layout()
         self.mainArea.insertWidget(1, self.albumScrollArea)
 
-        self.playlistScrollArea = QScrollArea()
-        self.playlistScrollBar = QScrollBar(Qt.Vertical, self.playlistScrollArea)
-        self.playlistScrollBar.setStyleSheet(scrollBarStyle)
-        self.playlistScrollArea.setVerticalScrollBar(self.playlistScrollBar)
-        self.playlistScrollArea.setFrameShape(QFrame.NoFrame)
-        self.playlistArea = QWidget()
-        self.playlistLayout = FlowLayout()
-        self.playlistArea.setLayout(self.playlistLayout)
-        self.playlistScrollArea.setWidget(self.playlistArea)
+        self.playlistScrollArea = MainScrollArea(FlowLayout)
+        self.playlistLayout = self.playlistScrollArea.widget().layout()
         self.mainArea.insertWidget(2, self.playlistScrollArea)
 
-        self.nowPlayingScrollArea = QScrollArea()
-        self.nowPlayingScrollBar = QScrollBar(Qt.Vertical, self.nowPlayingScrollArea)
-        self.nowPlayingScrollBar.setStyleSheet(scrollBarStyle)
-        self.nowPlayingScrollArea.setVerticalScrollBar(self.nowPlayingScrollBar)
-        self.nowPlayingArea = QWidget()
-        self.nowPlayingLayout = QGridLayout()
+        self.nowPlayingScrollArea = MainScrollArea(QGridLayout)
+        self.nowPlayingLayout = self.nowPlayingScrollArea.widget().layout()
         self.nowPlayingLayout.setAlignment(Qt.AlignTop)
         self.nowPlayingLayout.setHorizontalSpacing(0)
         self.nowPlayingLayout.setVerticalSpacing(0)
@@ -147,8 +80,6 @@ class MainBox(QWidget):
         self.nowPlayingLayout.setColumnStretch(0, 1)
         self.nowPlayingLayout.setColumnStretch(1, 1)
         self.nowPlayingLayout.setColumnStretch(3, 2)
-        self.nowPlayingArea.setLayout(self.nowPlayingLayout)
-        self.nowPlayingScrollArea.setWidget(self.nowPlayingArea)
         self.mainArea.insertWidget(3, self.nowPlayingScrollArea)
 
         self.nowPlayingSong = None
@@ -374,21 +305,13 @@ class SongList(QWidget):
         self.buttons.layout().addWidget(self.buttonOrderReverse)
         self.layout.addWidget(self.buttons)
 
-        self.scrollArea = QScrollArea()
-        self.scrollBar = QScrollBar(Qt.Vertical, self.scrollArea)
-        self.scrollBar.setStyleSheet(scrollBarStyle)
-        self.scrollArea.setVerticalScrollBar(self.scrollBar)
-        self.scrollArea.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        self.scrollArea.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.scrollArea = MainScrollArea(QVBoxLayout)
         self.scrollArea.setWidgetResizable(True)
         self.scrollArea.setFrameShape(QFrame.NoFrame)
         self.layout.addWidget(self.scrollArea)
-        self.songArea = QWidget()
-        self.scrollArea.setWidget(self.songArea)
-        self.songLayout = QVBoxLayout()
+        self.songLayout = self.scrollArea.widget().layout()
         self.songLayout.setSpacing(0)
         self.songLayout.setAlignment(Qt.AlignTop)
-        self.songArea.setLayout(self.songLayout)
         self.garbageProtector = {}  # Necessary for preventing C++ from deleting the objects
         self.nowPlayingSong = None
         self.displayedType = None
@@ -399,36 +322,32 @@ class SongList(QWidget):
 
     def orderBy(self) -> None:
         text = self.buttonOrderBy.text()
-
         if self.displayedType == "artist":
             if text == "Album":
                 self.buttonOrderBy.setText("Year")
             elif text == "Year":
                 self.buttonOrderBy.setText("Album")
-
         elif self.displayedType == "playlist":
             if text == "Artist":
                 self.buttonOrderBy.setText("Album")
             elif text == "Album":
                 self.buttonOrderBy.setText("Year")
             elif text == "Year":
+                self.buttonOrderBy.setText("Original")
+            elif text == "Original":
                 self.buttonOrderBy.setText("Artist")
-
         self.control.getSongs(None, None)
 
     def validateSortingButtonText(self) -> None:
         text = self.buttonOrderBy.text()
-
         if self.displayedType == "album":
             self.buttonOrderBy.setText("Track number")
-
         elif self.displayedType == "artist":
             if text not in ["Album", "Year"]:
                 self.buttonOrderBy.setText("Year")
-
         elif self.displayedType == "playlist":
-            if text not in ["Artist", "Album", "Year"]:
-                self.buttonOrderBy.setText("Artist")
+            if text not in ["Artist", "Album", "Year", "Original"]:
+                self.buttonOrderBy.setText("Original")
 
     def reverseOrder(self):
         text = self.buttonOrderReverse.text()
