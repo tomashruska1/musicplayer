@@ -22,9 +22,9 @@ class Control:
         self.playlist = QMediaPlaylist()
         self.player.setPlaylist(self.playlist)
         self.mainWindow = MainWindow(self, screens)
-        self.mainBox = self.mainWindow.centralWidget().upperBox.mainBox
+        self.mainArea = self.mainWindow.centralWidget().upperBox.mainArea
         self.songList = self.mainWindow.centralWidget().upperBox.songList
-        self.bottomBox = self.mainWindow.centralWidget().bottomBox
+        self.mediaControlArea = self.mainWindow.centralWidget().mediaControlArea
         self.mainWindow.show()
         self.library = None
         self.currentSong = None
@@ -34,7 +34,7 @@ class Control:
         self.volume = 50
 
         self.volumeChange(self.volume)
-        self.bottomBox.volumeControl.setValue(self.volume)
+        self.mediaControlArea.volumeControl.setValue(self.volume)
 
         self.mainTimer = QTimer()
         self.mainTimer.setInterval(100)
@@ -46,6 +46,7 @@ class Control:
         self.libraryUpdateTimer.timeout.connect(self.updateLibrary)
         self.libraryUpdateTimer.start()
 
+        self._connection = None
         self.connections()
 
         self.displayedType = None
@@ -56,7 +57,7 @@ class Control:
         if values:
             self.mainWindow.setGeometry(*values)
             self.volumeChange(self.volume)
-            self.bottomBox.volumeControl.setValue(self.volume)
+            self.mediaControlArea.volumeControl.setValue(self.volume)
 
         self.setUpTimer = QTimer()
         self.setUpTimer.setInterval(20)
@@ -68,15 +69,15 @@ class Control:
         self.player.currentMediaChanged.connect(self.updateCurrentSong)
         self.player.durationChanged.connect(self.updateSongProgressRange)
         self.player.stateChanged.connect(self.playerStatusChanged)
-        self.bottomBox.previousButton.click.connect(self.playlist.previous)
-        self.bottomBox.repeatButton.click.connect(self.repeatButtonClick)
-        self.bottomBox.stopButton.click.connect(self.stopButtonClick)
-        self.bottomBox.playButton.click.connect(self.playButtonClick)
-        self.bottomBox.randomButton.click.connect(self.randomButtonClick)
-        self.bottomBox.nextButton.click.connect(self.playlist.next)
-        self.bottomBox.muteButton.click.connect(self.mute)
-        self.bottomBox.songProgress.sliderMoved.connect(self.songProgressMove)
-        self.bottomBox.volumeControl.sliderMoved.connect(self.volumeChange)
+        self.mediaControlArea.previousButton.click.connect(self.playlist.previous)
+        self.mediaControlArea.repeatButton.click.connect(self.repeatButtonClick)
+        self.mediaControlArea.stopButton.click.connect(self.stopButtonClick)
+        self.mediaControlArea.playButton.click.connect(self.playButtonClick)
+        self.mediaControlArea.randomButton.click.connect(self.randomButtonClick)
+        self.mediaControlArea.nextButton.click.connect(self.playlist.next)
+        self.mediaControlArea.muteButton.click.connect(self.mute)
+        self.mediaControlArea.songProgress.sliderMoved.connect(self.songProgressMove)
+        self.mediaControlArea.volumeControl.sliderMoved.connect(self.volumeChange)
 
     def setAreas(self) -> None:
         """Called after the GUI is created to provide user with a feedback
@@ -88,7 +89,7 @@ class Control:
         self.types = {"artist": self.library.getSongsForArtist,
                       "album": self.library.getSongsForAlbum,
                       "playlist": self.library.getSongsForPlaylist}
-        self.mainBox.setAreas(self.library)
+        self.mainArea.setAreas(self.library)
         self.setUpTimer.deleteLater()
         self.setUpTimer = None
         self.getSongs(self.displayedType, self.displayedName)
@@ -99,7 +100,7 @@ class Control:
 
     def updateLibrary(self) -> None:
         self.library.update()
-        self.mainBox.updateView(self.library)
+        self.mainArea.updateView(self.library)
 
     def updateCurrentSong(self) -> None:
         """Update all areas that may display information about the currently
@@ -108,13 +109,13 @@ class Control:
         self.currentSong = media.request().url().toLocalFile().replace("/", "\\")
         if self.currentSong in self.library.library:
             self.songList.updateActiveSong(self.currentSong)
-            self.mainBox.updateActiveSong(self.playlist.currentIndex())
+            self.mainArea.updateActiveSong(self.playlist.currentIndex())
             songEntry = self.library.library[self.currentSong]
-            self.bottomBox.updateSongInfo(f"{songEntry[ARTIST]} - {songEntry[NAME]}")
+            self.mediaControlArea.updateSongInfo(f"{songEntry[ARTIST]} - {songEntry[NAME]}")
 
     def updateSongProgressRange(self) -> None:
         """Updates the range of the slider that represents the song position."""
-        self.bottomBox.updateSongProgressRange(self.player.duration())
+        self.mediaControlArea.updateSongProgressRange(self.player.duration())
 
     def playerStatusChanged(self) -> None:
         """Used to properly update the player look after the current playlist has finished."""
@@ -164,10 +165,10 @@ class Control:
         if index > 0:
             self.playlist.setCurrentIndex(index)
         self.playing = True
-        self.bottomBox.playButton.updatePictures(bottom.pausePixmap,
-                                                 bottom.pauseHoverPixmap, False)
-        self.mainBox.setNowPlayingArea(self.library)
-        self.mainBox.updateActiveSong(self.playlist.currentIndex())
+        self.mediaControlArea.playButton.updatePictures(bottom.pausePixmap,
+                                                        bottom.pauseHoverPixmap, False)
+        self.mainArea.setNowPlayingArea(self.library)
+        self.mainArea.updateActiveSong(self.playlist.currentIndex())
 
     def playSongWidget(self, songPath: str, afterCurrent: bool = False) -> None:
         if afterCurrent:
@@ -175,15 +176,15 @@ class Control:
             self.playlist.insertMedia(index, QMediaContent(QUrl.fromLocalFile(songPath)))
         else:
             self.playlist.addMedia(QMediaContent(QUrl.fromLocalFile(songPath)))
-        self.mainBox.setNowPlayingArea(self.library)
-        self.mainBox.updateActiveSong(self.playlist.currentIndex())
+        self.mainArea.setNowPlayingArea(self.library)
+        self.mainArea.updateActiveSong(self.playlist.currentIndex())
         self.playing = True
 
     def removeFromNowPlaying(self, widget) -> None:
         if self.playlist.mediaCount() > 1:
-            for row in range(self.mainBox.nowPlayingLayout.rowCount()):
-                for column in range(self.mainBox.nowPlayingLayout.columnCount()):
-                    if self.mainBox.nowPlayingLayout.itemAtPosition(row, column).widget() is widget:
+            for row in range(self.mainArea.nowPlayingLayout.rowCount()):
+                for column in range(self.mainArea.nowPlayingLayout.columnCount()):
+                    if self.mainArea.nowPlayingLayout.itemAtPosition(row, column).widget() is widget:
                         self.playlist.removeMedia(row - 1)
                         break
                 else:
@@ -192,9 +193,9 @@ class Control:
         else:
             self.stopButtonClick()
             self.playlist.clear()
-        self.mainBox.setNowPlayingArea(self.library)
+        self.mainArea.setNowPlayingArea(self.library)
         if self.playing:
-            self.mainBox.updateActiveSong(self.playlist.currentIndex())
+            self.mainArea.updateActiveSong(self.playlist.currentIndex())
 
     def playMediaWidget(self, isType: str, target: str, startOver: bool, afterCurrent: bool) -> None:
         """Called from MediaWidget - plays all songs for MediaWidget's type and name."""
@@ -211,10 +212,10 @@ class Control:
         if startOver:
             self.player.play()
             self.playing = True
-            self.bottomBox.playButton.updatePictures(bottom.pausePixmap,
-                                                     bottom.pauseHoverPixmap, False)
-        self.mainBox.setNowPlayingArea(self.library)
-        self.mainBox.updateActiveSong(self.playlist.currentIndex())
+            self.mediaControlArea.playButton.updatePictures(bottom.pausePixmap,
+                                                            bottom.pauseHoverPixmap, False)
+        self.mainArea.setNowPlayingArea(self.library)
+        self.mainArea.updateActiveSong(self.playlist.currentIndex())
 
     def playFromNowPlaying(self, song: str) -> None:
         """Called when user double-clicks on a song in the Now Playing tab."""
@@ -229,7 +230,7 @@ class Control:
 
     def createPlaylist(self, playlistName: str) -> None:
         self.library.createPlaylist(playlistName)
-        self.mainBox.setMainAreaPlaylists(self.library)
+        self.mainArea.setMainAreaPlaylists(self.library)
 
     def addToExistingPlaylist(self, playlist: str, songOrWidget: str, isType: str) -> None:
         if isType in self.types:
@@ -241,40 +242,40 @@ class Control:
 
     def removeFromPlaylist(self, playlist: str, song: str) -> None:
         self.library.deleteFromPlaylist(playlist, song)
-        self.mainBox.setMainAreaPlaylists(self.library)
+        self.mainArea.setMainAreaPlaylists(self.library)
         self.library.update()
         self.getSongs("playlist", playlist)
 
     def renamePlaylist(self, playlistName: str, newPlaylistName: str) -> None:
         self.library.renamePlaylist(playlistName, newPlaylistName)
-        self.mainBox.setMainAreaPlaylists(self.library)
+        self.mainArea.setMainAreaPlaylists(self.library)
         self.library.update()
 
     def deletePlaylist(self, playlistName: str) -> None:
         self.library.deletePlaylist(playlistName)
-        self.mainBox.setMainAreaPlaylists(self.library)
+        self.mainArea.setMainAreaPlaylists(self.library)
         self.library.update()
 
     def addWatchedFolder(self, folder: str) -> None:
         """Adds a folder to the Library class. all mp3 files within the folder
         and its sub-folders will be added to the library and accessible to the player."""
         self.library.addFolder(folder.replace("/", "\\"))
-        self.mainBox.updateView(self.library)
+        self.mainArea.updateView(self.library)
 
     def removeWatchedFolder(self, folder: str) -> None:
         """Removes folder from the library, updates view and stops playback if
         the current song was in the now-removed folder."""
         self.library.deleteFolder(folder)
-        self.mainBox.updateView(self.library)
+        self.mainArea.updateView(self.library)
         if self.currentSong not in self.library.library:
             self.songList.updateSongList([], [], "", "")
             self.player.stop()
             self.playlist.clear()
-            self.bottomBox.updateSongInfo("")
+            self.mediaControlArea.updateSongInfo("")
             self.songList.nowPlayingSong = None
-            self.mainBox.nowPlayingSong = None
+            self.mainArea.nowPlayingSong = None
             self.playing = False
-            self.bottomBox.updatePlayButton(self.playing, False)
+            self.mediaControlArea.updatePlayButton(self.playing, False)
 
     def playButtonClick(self, passMove: bool = True) -> None:
         if not self.playing:
@@ -283,12 +284,12 @@ class Control:
                 return
             self.playing = True
             self.player.play()
-            self.mainBox.updateActiveSong(self.playlist.currentIndex())
+            self.mainArea.updateActiveSong(self.playlist.currentIndex())
             self.songList.updateActiveSong(self.currentSong)
         else:
             self.playing = False
             self.player.pause()
-        self.bottomBox.updatePlayButton(self.playing, passMove)
+        self.mediaControlArea.updatePlayButton(self.playing, passMove)
 
     def repeatButtonClick(self) -> None:
         if self.repeat == 0:
@@ -300,7 +301,7 @@ class Control:
         elif self.repeat == 2:
             self.repeat = 0
             self.playlist.setPlaybackMode(QMediaPlaylist.Sequential)
-        self.bottomBox.updateRepeatButton(self.repeat)
+        self.mediaControlArea.updateRepeatButton(self.repeat)
 
     def randomButtonClick(self) -> None:
         if not self.random:
@@ -309,21 +310,21 @@ class Control:
         else:
             self.random = False
             self.playlist.setPlaybackMode(QMediaPlaylist.Sequential)
-        self.bottomBox.updateRandomButton(self.random)
+        self.mediaControlArea.updateRandomButton(self.random)
 
     def stopButtonClick(self) -> None:
         self.playing = False
         self.player.stop()
         if self.songList.nowPlayingSong is not None:
             self.songList.nowPlayingSong.clear()
-        if self.mainBox.nowPlayingSong is not None:
-            self.mainBox.nowPlayingSong.clear()
-        self.bottomBox.updatePlayButton(self.playing, False)
+        if self.mainArea.nowPlayingSong is not None:
+            self.mainArea.nowPlayingSong.clear()
+        self.mediaControlArea.updatePlayButton(self.playing, False)
 
     def mute(self) -> None:
         if not self.player.isMuted():
             self.player.setMuted(True)
-            self.bottomBox.showMute()
+            self.mediaControlArea.showMute()
         else:
             self.player.setMuted(False)
             self.volumeChange(self.volume)
@@ -334,7 +335,7 @@ class Control:
                                          QAudio.LinearVolumeScale) * 100
         self.player.setVolume(logVolume)
         self.volume = volume
-        self.bottomBox.updateVolumeBar(volume)
+        self.mediaControlArea.updateVolumeBar(volume)
 
     def songProgressMove(self, position: int) -> None:
         self.player.setPosition(position)
@@ -343,14 +344,29 @@ class Control:
         position = self.player.position()
         if 0 <= position < 2_000_000_000:
             if self.player.state() > 0:
-                self.bottomBox.updateSongProgress(position)
+                self.mediaControlArea.updateSongProgress(position)
                 if self.playing:
                     self.songList.activeSongPixmap()
-                    self.mainBox.activeSongPixmap()
+                    self.mainArea.activeSongPixmap()
             else:
-                self.bottomBox.updateSongProgress(0)
+                self.mediaControlArea.updateSongProgress(0)
+
+    def disconnect(self):
+        self.player.currentMediaChanged.disconnect()
+        self.player.durationChanged.disconnect()
+        self.player.stateChanged.disconnect()
+        self.mediaControlArea.previousButton.click.disconnect()
+        self.mediaControlArea.repeatButton.click.disconnect()
+        self.mediaControlArea.stopButton.click.disconnect()
+        self.mediaControlArea.playButton.click.disconnect()
+        self.mediaControlArea.randomButton.click.disconnect()
+        self.mediaControlArea.nextButton.click.disconnect()
+        self.mediaControlArea.muteButton.click.disconnect()
+        self.mediaControlArea.songProgress.sliderMoved.disconnect()
+        self.mediaControlArea.volumeControl.sliderMoved.disconnect()
 
     def close(self) -> None:
+        self.disconnect()
         self.player.stop()
         self.mainTimer.stop()
         self.save()
